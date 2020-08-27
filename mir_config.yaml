@@ -1,0 +1,146 @@
+# ROBOT CONFIG =================================================================
+# To init MiR robot REST APIs and RMF states
+
+robots:
+  # NOTE(CH3): This robot name is different from the MiR robot name
+  # for some reason
+  #
+  # I don't have access to the MiR REST server to test it out
+  # Doesn't seem very configurable from the code side?
+  #
+  # So for now, this name is the name used in the script only.
+  robot_name_in_script:
+    mir_config:
+      base_url: "http://some_url"
+      user: "some_user"
+      password: "some_password"
+
+    rmf_config:
+      robot_state_update_frequency: 1
+      start:
+        map_name: "test_map"
+
+        # NOTE(CH3):
+        # If you leave these empty, the robot will try to figure it out on init
+        # from the MiR reported location.
+        #
+        # Otherwise, fill BOTH of these! And make sure that the robot starts
+        # ON the waypoint!
+        waypoint_index: # Optional
+        orientation: # Optional, radians
+
+
+# NODE CONFIG ==================================================================
+# To init the ROS2 node names used in the script
+
+node_names:
+  robot_command_handle: "rmf_mir_fleet_command_handler"
+  fleet_state_publisher: "rmf_mir_fleet_state_publisher"
+  rmf_fleet_adapter: "TestDeliveryAdapter"
+
+
+# TRANSFORM CONFIG =============================================================
+# For computing transforms between MiR and RMF coordinate systems
+#
+# NOTE(CH3): I am assuming that the transform is the same across maps
+# Otherwise... Future me or future someone else, PLEASE KEY THIS PER MAP
+# And also remember to edit the robot.transforms dictionary accordingly!!
+
+reference_coordinates:
+  rmf: [[26.95, -20.23],
+        [29.26, -22.38],
+        [11.4, -16.48],
+        [12.46, -16.99]]
+
+  mir: [[7.2, 16.6],
+        [5.15, 18.35],
+        [23, 12.35],
+        [22.05, 12.95]]
+
+
+# FLEET CONFIG =================================================================
+# RMF Fleet parameters
+
+rmf_fleet:
+  name: "test_fleet"
+  limits:
+    linear: [0.7, 0.3] # velocity, acceleration
+    angular: [1.0, 0.45]
+  profile: # Robot profile is modelled as a circle
+    radius: 10
+  publish_fleet_state: True
+  fleet_state_topic: "fleet_state"
+  fleet_state_publish_frequency: 1
+
+# MAP CONFIG ===================================================================
+# RMF Navigation Graph configuration
+
+# test_map
+# Keys: {7: "pickup", 10: "dropoff"}
+#
+#                 10(D)
+#                  |
+#                  |
+#                  8------9
+#                  |      |
+#                  |      |
+#    3------4------5------6------7(D)
+#                  |      |
+#                  |      |
+#                  1------2
+#                  |
+#                  |
+#                  0
+
+rmf_maps: # Supports specifying multiple maps!
+  # <map_name>:
+  #   waypoints:
+  #   ...
+  test_map: # You should change this key to whatever your map name is!
+    waypoints:
+      - [0.0, -10.0] # index 0
+      - [0.0, -5.0]  # index 1
+      - [5.0, -5.0]  # index 2
+      - [-10.0, 0]   # index 3
+      - [-5.0, 0.0]  # index 4
+      - [0.0, 0.0]   # index 5
+      - [5.0, 0.0]   # index 6
+      - [10.0, 0.0]  # index 7
+      - [0.0, 5.0]   # index 8
+      - [5.0, 5.0]   # index 9
+      - [0.0, 10.0]  # index 10
+
+    # All following numbers are by waypoint index!
+    holding_points: # Optional
+      - 2
+      - 9
+    passthrough_points: # Optional
+    parking_spots: # Optional
+
+    lanes: # Optional, One-way lanes
+    bidir_lanes: # Optional, Two-way lanes
+      - [0, 1]
+      - [1, 2]
+      - [1, 5]
+      - [2, 6]
+      - [3, 4]
+      - [4, 5]
+      - [5, 6]
+      - [5, 8]
+      - [6, 9]
+      - [8, 9]
+    dock_lanes: # Optional
+      # NOTE: Order matters! The last element is the dock
+      #
+      # <dock_name>:
+      #   lane: [entry_waypoint_index, dock_waypoint_index]
+      #   seconds: <optional, int>
+      A:
+        lane: [6, 7]
+        seconds: # Optional, defaults to 10
+      B:
+        lane: [8, 10]
+    keys: # Optional
+      # <key_name>: <waypoint_index>
+      pickup: 7
+      dropoff: 10
