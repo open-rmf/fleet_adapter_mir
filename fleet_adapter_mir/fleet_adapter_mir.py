@@ -662,17 +662,17 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
         # At waypoint
         # States: (0, 1, 0)
-        if self.rmf_current_waypoint_index:
+        if self.rmf_current_waypoint_index is not None:
             self.rmf_updater.update_position(self.rmf_current_waypoint_index,
                                              self.rmf_ori)
         # In Transit or Idle in Lane
         # States: (1, 0, 0), (1, 0, 1)
-        elif self.rmf_current_lane_index:
+        elif self.rmf_current_lane_index is not None:
             self.rmf_updater.update_position(rmf_3d_pos,
                                              self.rmf_current_lane_index)
         # In Transit, Unknown Lane
         # States: (0, 0, 1)
-        elif self.rmf_target_waypoint_index:  # In Unknown Lane
+        elif self.rmf_target_waypoint_index is not None:  # In Unknown Lane
             self.rmf_updater.update_position(rmf_3d_pos,
                                              self.rmf_target_waypoint_index)
         # Lost or MiR Commanded
