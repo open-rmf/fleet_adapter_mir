@@ -369,6 +369,10 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     self._path_quit_cv.release()
 
         self._path_quit_event.clear()
+
+        if self._path_following_thread is not None:
+            self._path_following_thread.join()
+
         self._path_following_thread = threading.Thread(
             target=path_following_closure
         )
@@ -440,6 +444,10 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 self._docking_quit_cv.release()
 
         self._docking_quit_event.clear()
+
+        if self._docking_thread is not None:
+            self._docking_thread.join()
+
         self._docking_thread = threading.Thread(target=dock_closure)
         self._docking_thread.start()
 
