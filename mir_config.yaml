@@ -1,3 +1,7 @@
+# MAP CONFIG ===================================================================
+# Path to nav graph yaml
+map_path: nav_graph.yaml
+
 # ROBOT CONFIG =================================================================
 # To init MiR robot REST APIs and RMF states
 
@@ -71,76 +75,3 @@ rmf_fleet:
   publish_fleet_state: True
   fleet_state_topic: "fleet_state"
   fleet_state_publish_frequency: 1
-
-# MAP CONFIG ===================================================================
-# RMF Navigation Graph configuration
-
-# test_map
-# Keys: {7: "pickup", 10: "dropoff"}
-#
-#                 10(D)
-#                  |
-#                  |
-#                  8------9
-#                  |      |
-#                  |      |
-#    3------4------5------6------7(D)
-#                  |      |
-#                  |      |
-#                  1------2
-#                  |
-#                  |
-#                  0
-
-rmf_maps: # Supports specifying multiple maps!
-  # <map_name>:
-  #   waypoints:
-  #   ...
-  test_map: # You should change this key to whatever your map name is!
-    waypoints:
-      - [0.0, -10.0] # index 0
-      - [0.0, -5.0]  # index 1
-      - [5.0, -5.0]  # index 2
-      - [-10.0, 0]   # index 3
-      - [-5.0, 0.0]  # index 4
-      - [0.0, 0.0]   # index 5
-      - [5.0, 0.0]   # index 6
-      - [10.0, 0.0]  # index 7
-      - [0.0, 5.0]   # index 8
-      - [5.0, 5.0]   # index 9
-      - [0.0, 10.0]  # index 10
-
-    # All following numbers are by waypoint index!
-    holding_points: # Optional
-      - 2
-      - 9
-    passthrough_points: # Optional
-    parking_spots: # Optional
-
-    lanes: # Optional, One-way lanes
-    bidir_lanes: # Optional, Two-way lanes
-      - [0, 1]
-      - [1, 2]
-      - [1, 5]
-      - [2, 6]
-      - [3, 4]
-      - [4, 5]
-      - [5, 6]
-      - [5, 8]
-      - [6, 9]
-      - [8, 9]
-    dock_lanes: # Optional
-      # NOTE: Order matters! The last element is the dock
-      #
-      # <dock_name>:
-      #   lane: [entry_waypoint_index, dock_waypoint_index]
-      #   seconds: <optional, int>
-      A:
-        lane: [6, 7]
-        seconds: # Optional, defaults to 10
-      B:
-        lane: [8, 10]
-    keys: # Optional
-      # <key_name>: <waypoint_index>
-      pickup: 7
-      dropoff: 10
