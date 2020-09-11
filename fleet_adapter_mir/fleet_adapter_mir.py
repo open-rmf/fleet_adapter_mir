@@ -704,9 +704,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         # When robot is done moving, robot will be IdleAtUnknown
         if not self.rmf_path_requested and robot_mode == RobotMode.MODE_MOVING:
             # Unset all
-            self.rmf_current_lane_index = 0
-            self.rmf_current_waypoint_index = 0
-            self.rmf_target_waypoint_index = 0
+            self.rmf_current_lane_index = None
+            self.rmf_current_waypoint_index = None
+            self.rmf_target_waypoint_index = None
 
         # RMF_ReachedWaypoint -> IdleAtWaypoint
         # Set current to target's value, unset target and lane
