@@ -85,9 +85,13 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.rmf_lane_dict = {}  # Maps entry, exit to lane index
         self.rmf_map_name = ""
 
+        # This is made out of RMF Plan Waypoints
+        self.rmf_remaining_path_waypoints = []
+
         # NOTE(CH3): This is required for fleet state publishing
         # The path is in reverse order! (i.e. [last, ... first])
-        self.rmf_remaining_path = []
+        # This is made out of RMF Location messages
+        self.rmf_robot_state_path_locations = []
 
         # Populate lane dict
         for i in range(self.rmf_graph.num_lanes):
@@ -141,23 +145,23 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         """Set pause flag and hold on to any requested paths."""
         self.paused = True
 
-        if self.rmf_remaining_path:
+        if self.rmf_remaining_path_waypoints:
             self.node.get_logger().info(
                 '[PAUSE] {self.name}: Current path saved!'
             )
 
-            self.paused_path = self.rmf_remaining_path
-            self.rmf_remaining_path = []
+            self.paused_path = self.rmf_remaining_path_waypoints
+            self.rmf_remaining_path_waypoints = []
 
     def resume(self):
         """Unset pause flag and substitute paused paths if no paths exist."""
         if self.paused:
             self.paused = False
 
-            if self.rmf_remaining_path:
+            if self.rmf_remaining_path_waypoints:
                 return
             elif self.paused_path:
-                self.rmf_remaining_path = self.paused_path
+                self.rmf_remaining_path_waypoints = self.paused_path
                 self.paushed_path = []
 
                 self.node.get_logger().info(
@@ -168,7 +172,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
     def stop(self):
         """Stop all path following and docking commands."""
-        self.rmf_remaining_path.clear()
+        self.rmf_remaining_path_waypoints.clear()
         self.rmf_path_requested = False
         self.rmf_target_waypoint_index = None
 
@@ -210,10 +214,18 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.current_task_id += 1
 
         self.rmf_path_requested = True
-        self.rmf_remaining_path = copy.copy(waypoints)
 
-        # Construct remaining path list
-        for waypoint in waypoints[::-1]:
+        # Obtain plan waypoints ===============================================
+        self.rmf_remaining_path_waypoints = copy.copy(waypoints)
+
+        # We reverse this list so that we can pop it instead of traversing
+        # it using an index (which is more Pythonic)
+        self.rmf_remaining_path_waypoints.reverse()
+
+        # Construct robot state path list =====================================
+        self.rmf_robot_state_path_locations = []
+
+        for waypoint in self.rmf_remaining_path_waypoints:
             # Split timestamp into decimal and whole second portions
             _sub_seconds, _seconds = math.modf(waypoint.time.timestamp())
 
@@ -221,7 +233,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             _msg.x, _msg.y, _msg.yaw = waypoint.position
             _msg.t.sec, _msg.t.nanosec = int(_seconds), int(_sub_seconds * 1e9)
 
-            self.rmf_remaining_path.append(_msg)
+            self.rmf_robot_state_path_locations.append(_msg)
 
         if not self.dry_run:
             status = PutStatus(state_id=MiRState.READY)
@@ -233,11 +245,13 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
             # LOOP ============================================================
             # Kept alive if paused
-            while ((self.rmf_remaining_path or self.paused)
+            while ((self.rmf_remaining_path_waypoints or self.paused)
                     or _current_waypoint):
                 if not self.paused:  # Skipped if paused
                     if _current_waypoint is None:
-                        _current_waypoint = self.rmf_remaining_path.pop()
+                        _current_waypoint = (
+                            self.rmf_remaining_path_waypoints.pop()
+                        )
                         self.rmf_path_requested = True
 
                     waypoint_leave_msg = _current_waypoint.t
@@ -269,7 +283,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                         and not self.paused):  # Skipped if paused
 
                     # END =====================================================
-                    if not self.rmf_remaining_path:  # We're done!
+                    if not self.rmf_remaining_path_waypoints:  # We're done!
                         self.rmf_path_requested = False
 
                         path_finished_callback()
@@ -279,7 +293,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
                     # ASSIGN NEXT TARGET ======================================
                     else:
-                        _next_waypoint = self.rmf_remaining_path[-1]
+                        _next_waypoint = self.rmf_remaining_path_waypoints[-1]
 
                         # Grab graph indices
                         if _next_waypoint.graph_index.has_value:
@@ -745,7 +759,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             robot_state.battery_percent = api_response.battery_percentage
 
             robot_state.location = rmf_location
-            robot_state.path = self.rmf_remaining_path
+            robot_state.path = self.rmf_robot_state_path_locations
             robot_state.location.t.sec = now_sec
             robot_state.location.t.nanosec = now_ns
 
