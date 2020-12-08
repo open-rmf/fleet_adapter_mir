@@ -170,8 +170,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         else:
             return
 
-    def stop(self):
-        """Stop all path following and docking commands."""
+    def clear(self):
+        """Clear all pending action information"""
         self.rmf_remaining_path_waypoints.clear()
         self.rmf_path_requested = False
         self.rmf_target_waypoint_index = None
@@ -179,12 +179,18 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.rmf_docking_requested = False
         self.rmf_docking_executed = False
 
+
+    def stop(self):
+        """Stop all path following and docking commands."""
+        self.clear()
+
         if self._path_following_thread is not None:
             self._path_quit_event.set()
             self._path_quit_cv.acquire()
             self._path_quit_cv.notify_all()
             self._path_quit_cv.release()
             self._path_following_thread.join()
+            self._path_following_thread = None
 
         if self._docking_thread is not None:
             self._docking_quit_event.set()
@@ -192,6 +198,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             self._docking_quit_cv.notify_all()
             self._docking_quit_cv.release()
             self._docking_thread.join()
+            self._docking_thread = None
 
         if not self.dry_run:
             self.mir_api.mission_queue_delete()
@@ -270,7 +277,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
                 # CHECK FOR PRE-EMPT ==========================================
                 if self._path_quit_event.is_set():
-                    self.stop()
+                    self.clear()
                     self.node.get_logger().info(
                         '[ABORT] {self.name}: Pre-empted path following!'
                     )
@@ -432,7 +439,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     self.rmf_docking_requested = False
                     self.rmf_docking_executed = False
 
-                    self.stop()
+                    self.clear()
 
                     self.node.get_logger().info(
                         '[ABORT] Pre-empted dock at: "{dock_name}"!'
