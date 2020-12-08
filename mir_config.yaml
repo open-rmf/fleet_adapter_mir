@@ -13,7 +13,7 @@ robots:
   # Doesn't seem very configurable from the code side?
   #
   # So for now, this name is the name used in the script only.
-  robot_name_in_script:
+  my_test_robot:
     mir_config:
       base_url: "http://some_url"
       user: "some_user"
@@ -22,7 +22,7 @@ robots:
     rmf_config:
       robot_state_update_frequency: 1
       start:
-        map_name: "test_map"
+        map_name: "L1"
 
         # NOTE(CH3):
         # If you leave these empty, the robot will try to figure it out on init
@@ -30,8 +30,8 @@ robots:
         #
         # Otherwise, fill BOTH of these! And make sure that the robot starts
         # ON the waypoint!
-        waypoint_index: # Optional
-        orientation: # Optional, radians
+        waypoint_index: 0 # Optional
+        orientation: 0.0 # Optional, radians
 
 
 # NODE CONFIG ==================================================================
@@ -71,7 +71,7 @@ rmf_fleet:
     linear: [0.7, 0.3] # velocity, acceleration
     angular: [1.0, 0.45]
   profile: # Robot profile is modelled as a circle
-    radius: 10
+    radius: 0.5
   publish_fleet_state: True
   fleet_state_topic: "fleet_state"
   fleet_state_publish_frequency: 1

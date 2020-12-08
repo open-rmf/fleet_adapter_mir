@@ -150,8 +150,9 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
         start_config = rmf_config['start']
 
         # If the plan start is configured, use it, otherwise, grab it
-        if (start_config.get('waypoint_index')
-                and start_config.get('orientation')):
+        waypoint_index = start_config.get('waypoint_index')
+        orientation = start_config.get('orientation')
+        if (waypoint_index is not None) and (orientation is not None):
             starts = [plan.Start(handle_data['adapter'].now(),
                                  start_config.get('waypoint_index'),
                                  start_config.get('orientation'))]
@@ -169,7 +170,7 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
         # Insert start data into robot
         start = starts[0]
 
-        if start.lane.has_value:  # If the robot is in a lane
+        if start.lane is not None:  # If the robot is in a lane
             robot.rmf_current_lane_index = start.lane.value
             robot.rmf_current_waypoint_index = None
             robot.rmf_target_waypoint_index = None
