@@ -17,6 +17,8 @@ import argparse
 import nudged
 import yaml
 
+import urllib3
+
 
 ###############################################################################
 # HELPER FUNCTIONS AND CLASSES
@@ -71,6 +73,7 @@ def compute_transforms(rmf_coordinates, mir_coordinates, node=None):
 
 def create_fleet(config, mock):
     """Create RMF Adapter, FleetUpdateHandle, and parse navgraph."""
+    print(config)
     profile = traits.Profile(
         geometry.make_final_convex_circle(
             config['rmf_fleet']['profile']['radius']
@@ -114,8 +117,8 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
         rmf_config = robot_config['rmf_config']
 
         configuration = mir100_client.Configuration()
-        configuration.username = mir_config['base_url']
-        configuration.host = mir_config['user']
+        configuration.host = mir_config['base_url']
+        configuration.username = mir_config['user']
         configuration.password = mir_config['password']
 
         api_client = mir100_client.ApiClient(configuration)
@@ -123,10 +126,10 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
 
         # CONFIGURE HANDLE ====================================================
         robot = MiRCommandHandle(
-            name=robot_name,
-            node=handle_data['node'],
-            rmf_graph=handle_data['graph'],
-            robot_state_update_frequency=rmf_config.get(
+                name=robot_name,
+                node=handle_data['node'],
+                rmf_graph=handle_data['graph'],
+                robot_state_update_frequency=rmf_config.get(
                 'robot_state_update_frequency', 1),
             dry_run=dry_run
         )
@@ -153,6 +156,7 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
         waypoint_index = start_config.get('waypoint_index')
         orientation = start_config.get('orientation')
         if (waypoint_index is not None) and (orientation is not None):
+            pprint(type(handle_data['adapter']))
             starts = [plan.Start(handle_data['adapter'].now(),
                                  start_config.get('waypoint_index'),
                                  start_config.get('orientation'))]
@@ -251,6 +255,7 @@ def main(args, delivery_condition=None, mock=False):
     # CREATE NODE EXECUTOR ====================================================
     rclpy_executor = rclpy.executors.SingleThreadedExecutor()
     rclpy_executor.add_node(cmd_node)
+
 
     # INIT FLEET STATE PUB ====================================================
     if config['rmf_fleet']['publish_fleet_state']:
