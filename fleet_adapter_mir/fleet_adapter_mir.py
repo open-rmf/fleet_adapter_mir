@@ -100,10 +100,18 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         # Populate lane dict
         for i in range(self.rmf_graph.num_lanes):
             graph_lane = self.rmf_graph.get_lane(i)
-            id_tuple = (graph_lane.entry.waypoint_index,
-                        graph_lane.exit.waypoint_index)
+            id_tuple = (
+                graph_lane.entry.waypoint_index,
+                graph_lane.exit.waypoint_index
+            )
+            self.rmf_lane_dict.get(id_tuple, []).append(i)
 
-            self.rmf_lane_dict[id_tuple] = [i]
+            reverse_id_tuple = (
+                graph_lane.exit.waypoint_index,
+                graph_lane.entry.waypoint_index
+            )
+            self.rmf_lane_dict.get(reverse_id_tuple, []).append(i)
+
 
         # RMF Location Trackers ===============================================
         self.rmf_current_lane_index = None  # None when moving
