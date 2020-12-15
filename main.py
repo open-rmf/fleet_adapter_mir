@@ -105,7 +105,7 @@ def create_fleet(config, mock):
     else:
         fleet.accept_delivery_requests(delivery_condition)
 
-    return adapter, fleet, fleet_name, profile, nav_graph
+    return adapter, fleet, fleet_name, robot_traits, nav_graph
 
 
 def create_robot_command_handles(config, handle_data, dry_run=False):
@@ -129,6 +129,7 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
                 name=robot_name,
                 node=handle_data['node'],
                 rmf_graph=handle_data['graph'],
+                robot_traits=handle_data['robot_traits'],
                 robot_state_update_frequency=rmf_config.get(
                 'robot_state_update_frequency', 1),
             dry_run=dry_run
@@ -191,11 +192,13 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
             """Insert a RobotUpdateHandle."""
             handle_obj.rmf_updater = rmf_updater
 
-        handle_data['fleet_handle'].add_robot(robot,
-                                              robot.name,
-                                              handle_data['profile'],
-                                              starts,
-                                              partial(updater_inserter, robot))
+        handle_data['fleet_handle'].add_robot(
+            robot,
+            robot.name,
+            handle_data['robot_traits'].profile(),
+            starts,
+            partial(updater_inserter, robot)
+        )
 
         handle_data['node'].get_logger().info(
             f"successfully initialized robot {robot.name}"
@@ -230,8 +233,9 @@ def main(args, delivery_condition=None, mock=False):
     adpt.init_rclcpp()
 
     # INIT FLEET ==============================================================
-    adapter, fleet, fleet_name, profile, nav_graph = create_fleet(config,
-                                                                  mock=mock)
+    adapter, fleet, fleet_name, robot_traits, nav_graph = create_fleet(
+        config, mock=mock
+    )
 
     # INIT TRANSFORMS =========================================================
     rmf_coordinates = config['reference_coordinates']['rmf']
@@ -241,14 +245,16 @@ def main(args, delivery_condition=None, mock=False):
     # INIT ROBOT HANDLES ======================================================
     cmd_node = rclpy.node.Node(config['node_names']['robot_command_handle'])
 
-    handle_data = {'fleet_handle': fleet,
-                   'fleet_name': fleet_name,
-                   'adapter': adapter,
-                   'node': cmd_node,
+    handle_data = {
+        'fleet_handle': fleet,
+        'fleet_name': fleet_name,
+        'adapter': adapter,
+        'node': cmd_node,
 
-                   'graph': nav_graph,
-                   'profile': profile,
-                   'transforms': transforms}
+        'graph': nav_graph,
+        'robot_traits': robot_traits,
+        'transforms': transforms
+    }
 
     robots = create_robot_command_handles(config, handle_data, dry_run=dry_run)
 

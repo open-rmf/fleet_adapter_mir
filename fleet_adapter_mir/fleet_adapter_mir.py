@@ -52,6 +52,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                  name,
                  node,
                  rmf_graph,
+                 robot_traits,
                  robot_state_update_frequency=1,
                  dry_run=False):
         adpt.RobotCommandHandle.__init__(self)
@@ -62,10 +63,15 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
         self.name = name  # Name of robot object in config yaml
         self.node = node
+        self.robot_traits = robot_traits
+        self.linear_velocity = robot_traits.linear().get_nominal_velocity()
+        self.angular_velocity = robot_traits.angular().get_nominal_velocity()
         self.dry_run = dry_run  # For testing only. Disables REST calls.
 
         self.paused = False
         self.paused_path = []
+
+        self.next_arrival_updater = None
 
         # Robot State =========================================================
         self.robot_state = RobotState()
@@ -185,6 +191,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
     def clear(self):
         """Clear all pending action information"""
         self.rmf_remaining_path_waypoints.clear()
+        self.next_arrival_updater = None
         self.rmf_path_requested = False
         self.rmf_target_waypoint_index = None
 
@@ -238,7 +245,11 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.rmf_path_requested = True
 
         # Obtain plan waypoints ===============================================
-        self.rmf_remaining_path_waypoints = copy.copy(waypoints)
+        waypoints = copy.copy(waypoints)
+
+        self.rmf_remaining_path_waypoints = [
+            (i, waypoints[i]) for i in range(len(waypoints))
+        ]
 
         # We reverse this list so that we can pop it instead of traversing
         # it using an index (which is more Pythonic)
@@ -247,7 +258,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         # Construct robot state path list =====================================
         self.rmf_robot_state_path_locations = []
 
-        for waypoint in self.rmf_remaining_path_waypoints:
+        for (_, waypoint) in self.rmf_remaining_path_waypoints:
             # Split timestamp into decimal and whole second portions
             _sub_seconds, _seconds = math.modf(waypoint.time.timestamp())
 
@@ -269,11 +280,14 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             # Kept alive if paused
             while ((self.rmf_remaining_path_waypoints or self.paused)
                     or _current_waypoint):
+
+                # DEBUG PRINTOUT
                 print([x.graph_index for x in self.rmf_remaining_path_waypoints])
+
                 if not self.paused:  # Skipped if paused
                     print("Not paused")
                     if _current_waypoint is None:
-                        _current_waypoint = (
+                        _, _current_waypoint = (
                             self.rmf_remaining_path_waypoints.pop()
                         )
                         self.rmf_path_requested = True
@@ -311,6 +325,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     # END =====================================================
                     if not self.rmf_remaining_path_waypoints:  # We're done!
                         self.rmf_path_requested = False
+                        self.next_arrival_updater = None
 
                         print("Path Finished Callback")
                         path_finished_callback()
@@ -320,7 +335,17 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
                     # ASSIGN NEXT TARGET ======================================
                     else:
-                        _next_waypoint = self.rmf_remaining_path_waypoints[-1]
+                        _next_path_index, _next_waypoint = (
+                            self.rmf_remaining_path_waypoints[-1]
+                        )
+
+                        self.next_arrival_updater = (
+                            lambda p : next_arrival_estimator(
+                                _next_path_index, self.estimate_arrival(
+                                    _next_waypoint.position, p
+                                )
+                            )
+                        )
 
                         # Grab graph indices
                         if _next_waypoint.graph_index is not None:
@@ -412,6 +437,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self._path_following_thread = threading.Thread(
             target=path_following_closure
         )
+
         self._path_following_thread.start()
 
     def dock(self, dock_name, docking_finished_callback):
@@ -486,6 +512,21 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
         self._docking_thread = threading.Thread(target=dock_closure)
         self._docking_thread.start()
+
+
+    def estimate_arrival(self, goal, current_position):
+        # We do a very rough estimate here which ignores acceleration and
+        # deceleration rates
+        dx = goal[0] - current_position[0]
+        dy = goal[1] - current_position[1]
+        translation = math.sqrt(dx*dx + dy*dy)
+        t_translation = translation/self.linear_velocity
+
+        rotation = math.fabs(math.fmod(goal[2] - current_position[2], math.pi))
+        t_rotation = rotation/self.angular_velocity
+
+        return t_translation + t_rotation
+
 
     ##########################################################################
     # INIT METHODS
@@ -689,8 +730,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             if not self.dry_run:
                 api_response = self.mir_api.status_get()
             else:
-                self.rmf_updater.update_position(self.rmf_map_name,
-                                                 [0.0, 0.0, 0.0])
+                self.rmf_updater.update_lost_position(
+                    self.rmf_map_name, [0.0, 0.0, 0.0]
+                )
                 self.node.get_logger().info("[DRYRUN] Updated Position: "
                                             "pos: [0, 0] | ori: [0]")
                 return
@@ -709,10 +751,11 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         # At waypoint
         # States: (0, 1, 0)
         if self.rmf_current_waypoint_index is not None:
-            self.rmf_updater.update_current_waypoint(self.rmf_current_waypoint_index,
-                                             rmf_ori)
+            self.rmf_updater.update_current_waypoint(
+                self.rmf_current_waypoint_index, rmf_ori
+            )
             # DEBUG VARIABLES
-            update_type = 0 
+            update_type = 0
             if update_type != self.last_update_type:
                 print(f"Update Type: 0 Current Waypoint: {self.rmf_current_waypoint_index}, Orientation: {rmf_ori}")
 
@@ -741,12 +784,14 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         # Lost or MiR Commanded
         # States: (0, 0, 0)
         else:
-            self.rmf_updater.update_lost_position(self.rmf_map_name,
-                                             rmf_3d_pos)
+            self.rmf_updater.update_lost_position(self.rmf_map_name, rmf_3d_pos)
             # DEBUG VARIABLES
             update_type = 3
             if update_type != self.last_update_type:
                 print(f"Update Type: 3 Current Map Name: {self.rmf_map_name}, Current Location: {rmf_3d_pos}")
+
+        if self.next_arrival_updater:
+            self.next_arrival_updater(rmf_3d_pos)
 
         self.node.get_logger().info(f"Updated Position: pos: {rmf_pos} | "
                                     f"ori: {rmf_ori}")
