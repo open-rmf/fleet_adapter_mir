@@ -378,8 +378,13 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
                     print(f"RMF Index: {_next_waypoint.graph_index}")
 
+                    self.mir_state = None
                     self.queue_move_coordinate_mission(mir_location)
                     self.execute_updates()
+
+                    # DEBUGGING
+                    print(f'MiR state: {self.mir_state}')
+
                     continue
 
                 if not self.paused:  # Skipped if paused
