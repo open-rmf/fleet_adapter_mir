@@ -195,7 +195,7 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
         handle_data['fleet_handle'].add_robot(
             robot,
             robot.name,
-            handle_data['robot_traits'].profile(),
+            handle_data['robot_traits'].profile,
             starts,
             partial(updater_inserter, robot)
         )

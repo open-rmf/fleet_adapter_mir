@@ -64,8 +64,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.name = name  # Name of robot object in config yaml
         self.node = node
         self.robot_traits = robot_traits
-        self.linear_velocity = robot_traits.linear().get_nominal_velocity()
-        self.angular_velocity = robot_traits.angular().get_nominal_velocity()
+        self.linear_velocity = robot_traits.linear.nominal_velocity
+        self.angular_velocity = robot_traits.rotational.nominal_velocity
         self.dry_run = dry_run  # For testing only. Disables REST calls.
 
         self.paused = False
