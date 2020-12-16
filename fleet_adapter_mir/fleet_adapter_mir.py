@@ -304,7 +304,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     if not self.rmf_remaining_path_waypoints:  # We're done!
                         self.rmf_path_requested = False
 
-                        print("Path Finished Callback")
+                        print(f"==========================================Path Finished Callback==============================================")
                         path_finished_callback()
                         self.execute_updates()
 
@@ -379,7 +379,10 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     print(f"RMF Index: {_next_waypoint.graph_index}")
 
                     self.mir_state = None
+
+                    print(f"=============================================Queuing Mission:{_current_index} ====================================================")
                     self.queue_move_coordinate_mission(mir_location)
+                    print("Waiting for ONE SECOND"); import time; time.sleep(1)
                     self.execute_updates()
 
                     # DEBUGGING
