@@ -1,12 +1,14 @@
-from fleet_adapter_mir import MiRCommandHandle, MiRRetryContext
-import mir100_client
+from fleet_adapter_mir import MiRCommandHandle
+from MiRClientAPI import MirAPI
 
 from rmf_fleet_msgs.msg import FleetState
+from rmf_task_msgs.msg import TaskProfile, TaskType
 import rclpy.node
 import rclpy
 
 import rmf_adapter as adpt
 import rmf_adapter.vehicletraits as traits
+import rmf_adapter.battery as battery
 import rmf_adapter.geometry as geometry
 import rmf_adapter.graph as graph
 import rmf_adapter.plan as plan
@@ -71,21 +73,38 @@ def compute_transforms(rmf_coordinates, mir_coordinates, node=None):
     return transforms
 
 
-def create_fleet(config, mock):
+def create_fleet(config,nav_graph_path,task_request_check, mock):
     """Create RMF Adapter, FleetUpdateHandle, and parse navgraph."""
-    print(config)
     profile = traits.Profile(
-        geometry.make_final_convex_circle(
-            config['rmf_fleet']['profile']['radius']
-        )
+        geometry.make_final_convex_circle(config['rmf_fleet']['profile']['footprint']),
+        geometry.make_final_convex_circle(config['rmf_fleet']['profile']['vicinity'])
     )
     robot_traits = traits.VehicleTraits(
         linear=traits.Limits(*config['rmf_fleet']['limits']['linear']),
         angular=traits.Limits(*config['rmf_fleet']['limits']['angular']),
         profile=profile
     )
+    robot_traits.differential.reversible = config['rmf_fleet']['reversible']
 
-    nav_graph = graph.parse_graph(config['map_path'], robot_traits)
+    voltage = config['rmf_fleet']['battery_system']['voltage']
+    capacity = config['rmf_fleet']['battery_system']['capacity']
+    charging_current = config['rmf_fleet']['battery_system']['charging_current']
+    battery_sys = battery.BatterySystem.make(voltage,capacity,charging_current)
+
+    mass = config['rmf_fleet']['mechanical_system']['mass']
+    moment = config['rmf_fleet']['mechanical_system']['moment_of_inertia']
+    friction = config['rmf_fleet']['mechanical_system']['friction_coefficient']
+    mech_sys = battery.MechanicalSystem.make(mass,moment,friction)
+
+    ambient_power_sys = battery.PowerSystem.make(
+        config['rmf_fleet']['ambient_system']['power'])
+    tool_power_sys = battery.PowerSystem.make(
+        config['rmf_fleet']['cleaning_system']['power'])
+    motion_sink = battery.SimpleMotionPowerSink(battery_sys,mech_sys)
+    ambient_sink = battery.SimpleDevicePowerSink(battery_sys, ambient_power_sys)
+    
+
+    nav_graph = graph.parse_graph(nav_graph_path, robot_traits)
 
     # RMF_CORE Fleet Adapter: Manages delivery or loop requests
     if mock:
@@ -99,14 +118,31 @@ def create_fleet(config, mock):
     fleet_name = config['rmf_fleet']['name']
     fleet = adapter.add_fleet(fleet_name, robot_traits, nav_graph)
 
-    if delivery_condition is None:
+    if config['rmf_fleet']['publish_fleet_state']:
+        fleet.fleet_state_publish_period(None)
+    
+    drain_battery = config['rmf_fleet']['account_for_battery_drain']
+    recharge_threshold = config['rmf_fleet']['recharge_threshold']
+    recharge_soc = config['rmf_fleet']['recharge_soc']
+    tool_sink = battery.SimpleDevicePowerSink(battery_sys,battery.PowerSystem.make(0))
+
+    ok = fleet.set_task_planner_params(
+        battery_sys,
+        motion_sink,
+        ambient_sink,
+        tool_sink,
+        recharge_threshold,
+        recharge_soc,
+        drain_battery)
+    assert ok, ("Unable to set task planner params")
+
+    if task_request_check is None:
         # Naively accept all delivery requests
-        fleet.accept_delivery_requests(lambda x: True)
+        fleet.accept_task_requests(lambda x: True)
     else:
-        fleet.accept_delivery_requests(delivery_condition)
+        fleet.accept_task_requests(task_request_check)
 
     return adapter, fleet, fleet_name, robot_traits, nav_graph
-
 
 def create_robot_command_handles(config, handle_data, dry_run=False):
     robots = {}
@@ -116,13 +152,10 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
         mir_config = robot_config['mir_config']
         rmf_config = robot_config['rmf_config']
 
-        configuration = mir100_client.Configuration()
-        configuration.host = mir_config['base_url']
-        configuration.username = mir_config['user']
-        configuration.password = mir_config['password']
-
-        api_client = mir100_client.ApiClient(configuration)
-        api_client.default_headers['Accept-Language'] = 'en-US'
+        prefix = mir_config['base_url']
+        headers = {}
+        headers['Content-Type']  = mir_config['user']
+        headers['Authorization'] = mir_config['password']
 
         # CONFIGURE HANDLE ====================================================
         robot = MiRCommandHandle(
@@ -134,17 +167,17 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
                 'robot_state_update_frequency', 1),
             dry_run=dry_run
         )
-        robot.mir_api = mir100_client.DefaultApi(api_client)
+        robot.mir_api =  MirAPI(prefix,headers)
         robot.transforms = handle_data['transforms']
         robot.rmf_map_name = rmf_config['start']['map_name']
 
         if not dry_run:
-            with MiRRetryContext(robot):
-                _mir_status = robot.mir_api.status_get()
-                robot.mir_name = _mir_status.robot_name
+        #    with MiRRetryContext(robot):
+            _mir_status = robot.mir_api.status_get()
+            robot.mir_name = _mir_status["robot_name"]
 
-                robot.load_mir_missions()
-                robot.load_mir_positions()
+            robot.load_mir_missions()
+            robot.load_mir_positions()
         else:
             robot.mir_name = "DUMMY_ROBOT_FOR_DRY_RUN"
 
@@ -168,7 +201,6 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
                 robot.get_position(rmf=True, as_dimensions=True),
                 handle_data['adapter'].now()
             )
-
         assert starts, ("Robot %s can't be placed on the nav graph!"
                         % robot_name)
 
@@ -204,9 +236,7 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
             f"successfully initialized robot {robot.name}"
             f" (MiR name: {robot.mir_name})"
         )
-
     return robots
-
 
 ###############################################################################
 # MAIN
