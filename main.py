@@ -15,6 +15,7 @@ import rmf_adapter.plan as plan
 
 from functools import partial
 from pprint import pprint
+import sys
 import argparse
 import nudged
 import yaml
@@ -124,17 +125,6 @@ def create_fleet(config,nav_graph_path,task_request_check, mock):
     drain_battery = config['rmf_fleet']['account_for_battery_drain']
     recharge_threshold = config['rmf_fleet']['recharge_threshold']
     recharge_soc = config['rmf_fleet']['recharge_soc']
-    tool_sink = battery.SimpleDevicePowerSink(battery_sys,battery.PowerSystem.make(0))
-
-    ok = fleet.set_task_planner_params(
-        battery_sys,
-        motion_sink,
-        ambient_sink,
-        tool_sink,
-        recharge_threshold,
-        recharge_soc,
-        drain_battery)
-    assert ok, ("Unable to set task planner params")
 
     if task_request_check is None:
         # Naively accept all delivery requests
@@ -241,11 +231,37 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
 ###############################################################################
 # MAIN
 ###############################################################################
-def main(args, delivery_condition=None, mock=False):
-    config_path = args.config_path
+def main(argv=sys.argv, task_request_check=None, mock=False):
+
+    # INIT RCL ================================================================
+    rclpy.init(args=argv) 
+    adpt.init_rclcpp()
+    args_without_ros = rclpy.utilities.remove_ros_args(argv)
+    
+    parser = argparse.ArgumentParser(
+        prog="fleet_adapter_mir",
+        description="Configure and spin up fleet adapters for MiR 100 robots "
+                    "that interface between the "
+                    "MiR REST API, ROS2, and rmf_core!")
+    parser.add_argument("-c", "--config_file", type=str, required=True,
+                        help="Input config.yaml file to process")
+    parser.add_argument("-n", "--nav_graph", type=str, required=True,
+                    help="Path to the nav_graph for this fleet adapter")
+    parser.add_argument("-m", "--mock", action='store_true',
+                        help="Init a mock adapter instead "
+                             "(does not require a schedule node, "
+                             "but can interface with the REST API)")
+    parser.add_argument("-d", "--dry-run", action='store_true',
+                        help="Run as dry run. For testing only. "
+                             "Sets mock to True and disables all REST calls.")
+    args = parser.parse_args(args_without_ros[1:])
+    print(f"Starting mir fleet adapter...")
+    
+    config_path = args.config_file
+    nav_graph_path = args.nav_graph
     mock = args.mock
     dry_run = args.dry_run  # For testing
-
+    
     if dry_run:
         mock = True
 
@@ -258,14 +274,9 @@ def main(args, delivery_condition=None, mock=False):
     pprint(config)
     print()
 
-    # INIT RCL ================================================================
-    rclpy.init()
-    adpt.init_rclcpp()
-
     # INIT FLEET ==============================================================
-    adapter, fleet, fleet_name, robot_traits, nav_graph = create_fleet(
-        config, mock=mock
-    )
+    adapter, fleet, fleet_name, robot_traits, nav_graph = create_fleet(config,nav_graph_path,task_request_check=task_request_check,
+                                                                  mock=mock)
 
     # INIT TRANSFORMS =========================================================
     rmf_coordinates = config['reference_coordinates']['rmf']
@@ -336,28 +347,14 @@ def main(args, delivery_condition=None, mock=False):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        prog="fleet_adapter_mir",
-        description="Configure and spin up fleet adapters for MiR 100 robots "
-                    "that interface between the "
-                    "MiR REST API, ROS2, and rmf_core!"
-    )
-    parser.add_argument("config_path", type=str,
-                        help="Input config.yaml file to process")
-    parser.add_argument("-m", "--mock", action='store_true',
-                        help="Init a mock adapter instead "
-                             "(does not require a schedule node, "
-                             "but can interface with the REST API)")
-    parser.add_argument("-d", "--dry-run", action='store_true',
-                        help="Run as dry run. For testing only. "
-                             "Sets mock to True and disables all REST calls.")
-    args = parser.parse_args()
-
-    # Configure delivery condition ============================================
-    # Return True if the delivery requrest should be honoured
+    # Configure task condition ============================================
+    # Return True if the loop task request should be honoured
     # False otherwise
-    def delivery_condition(cpp_delivery_msg):
-        return True
+    def task_request_check(msg: TaskProfile):
+        if (msg.description.task_type == TaskType.TYPE_LOOP):
+            return True
+        else:
+            return False
 
-    main(args,
-         delivery_condition=delivery_condition)
+    main(sys.argv,
+           task_request_check=task_request_check)
