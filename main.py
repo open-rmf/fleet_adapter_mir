@@ -20,8 +20,6 @@ import argparse
 import nudged
 import yaml
 
-import urllib3
-
 
 ###############################################################################
 # HELPER FUNCTIONS AND CLASSES
@@ -302,7 +300,6 @@ def main(argv=sys.argv, task_request_check=None, mock=False):
     # CREATE NODE EXECUTOR ====================================================
     rclpy_executor = rclpy.executors.SingleThreadedExecutor()
     rclpy_executor.add_node(cmd_node)
-
 
     # INIT FLEET STATE PUB ====================================================
     if config['rmf_fleet']['publish_fleet_state']:
