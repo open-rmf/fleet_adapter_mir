@@ -71,7 +71,24 @@ rmf_fleet:
     linear: [0.7, 0.3] # velocity, acceleration
     angular: [1.0, 0.45]
   profile: # Robot profile is modelled as a circle
-    radius: 0.5
+    footprint: 0.4
+    vicinity: 0.5
+  reversible: False
+  battery_system:
+    voltage: 24.0
+    capacity: 40.0
+    charging_current: 26.4
+  mechanical_system:
+    mass: 80.0
+    moment_of_inertia: 20.0
+    friction_coefficient: 0.20
+  ambient_system:
+    power: 20.0
+  cleaning_system:
+    power: 650.0
+  recharge_threshold: 0.01
+  recharge_soc: 1.0
+  account_for_battery_drain: True
   publish_fleet_state: True
-  fleet_state_topic: "fleet_state"
+  fleet_state_topic: "fleet_states"
   fleet_state_publish_frequency: 1

@@ -2,24 +2,25 @@ from rmf_fleet_msgs.msg import Location, RobotMode, RobotState
 
 import rmf_adapter as adpt
 
-from mir100_client.rest import ApiException
-from mir100_client.models import PostMissionQueues, PostMissions, \
-    PostMissionActions, PutStatus
-
 from collections import namedtuple
 import threading
 import urllib3
 import copy
 import enum
 import math
+import argparse
+import json
+
+from datetime import timedelta
 
 __all__ = [
     "MiRLocation",
     "MiRState",
     "MiRPositionTypes",
     "MiRCommandHandle",
-    "MiRRetryContext"
+    #"MiRRetryContext"
 ]
+
 
 
 ###############################################################################
@@ -52,16 +53,26 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                  name,
                  node,
                  rmf_graph,
+                 robot_traits,
                  robot_state_update_frequency=1,
                  dry_run=False):
         adpt.RobotCommandHandle.__init__(self)
 
+        # DEBUG VARIABLES
+        self.last_update_type = None
+        #
+
         self.name = name  # Name of robot object in config yaml
         self.node = node
+        self.robot_traits = robot_traits
+        self.linear_velocity = robot_traits.linear.nominal_velocity
+        self.angular_velocity = robot_traits.rotational.nominal_velocity
         self.dry_run = dry_run  # For testing only. Disables REST calls.
 
         self.paused = False
         self.paused_path = []
+
+        self.next_arrival_updater = None
 
         # Robot State =========================================================
         self.robot_state = RobotState()
@@ -80,9 +91,11 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
         # RMF Variables =======================================================
         self.rmf_updater = None
-
         self.rmf_graph = rmf_graph
         self.rmf_lane_dict = {}  # Maps entry, exit to lane index
+
+        # TODO(MXG): We should initialize this to something sensible, based on
+        # the config file information
         self.rmf_map_name = ""
 
         # This is made out of RMF Plan Waypoints
@@ -96,10 +109,18 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         # Populate lane dict
         for i in range(self.rmf_graph.num_lanes):
             graph_lane = self.rmf_graph.get_lane(i)
-            id_tuple = (graph_lane.entry.waypoint_index,
-                        graph_lane.exit.waypoint_index)
+            id_tuple = (
+                graph_lane.entry.waypoint_index,
+                graph_lane.exit.waypoint_index
+            )
+            self.rmf_lane_dict.get(id_tuple, []).append(i)
 
-            self.rmf_lane_dict[id_tuple] = graph_lane
+            reverse_id_tuple = (
+                graph_lane.exit.waypoint_index,
+                graph_lane.entry.waypoint_index
+            )
+            self.rmf_lane_dict.get(reverse_id_tuple, []).append(i)
+
 
         # RMF Location Trackers ===============================================
         self.rmf_current_lane_index = None  # None when moving
@@ -124,6 +145,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self._path_following_thread = None
         self._path_quit_event = threading.Event()
         self._path_quit_cv = threading.Condition()
+        self._update_mutex = threading.Lock()
 
         # Dock queue execution thread
         self._docking_thread = None
@@ -133,7 +155,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         # Start State Update Timer ============================================
         self.state_update_timer = self.node.create_timer(
             self.robot_state_update_frequency,
-            self.update_internal_robot_state
+            self.lock_and_execute_updates
         )
 
     ##########################################################################
@@ -173,12 +195,12 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
     def clear(self):
         """Clear all pending action information"""
         self.rmf_remaining_path_waypoints.clear()
+        self.next_arrival_updater = None
         self.rmf_path_requested = False
         self.rmf_target_waypoint_index = None
 
         self.rmf_docking_requested = False
         self.rmf_docking_executed = False
-
 
     def stop(self):
         """Stop all path following and docking commands."""
@@ -217,13 +239,20 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                         waypoints,
                         next_arrival_estimator,  # function!
                         path_finished_callback):
+        waypoint_indices = ' '.join([str(x.graph_index) for x in waypoints])
+        print(f"Following new Path: {waypoint_indices}")
+
         self.stop()
         self.current_task_id += 1
 
         self.rmf_path_requested = True
 
         # Obtain plan waypoints ===============================================
-        self.rmf_remaining_path_waypoints = copy.copy(waypoints)
+        waypoints = copy.copy(waypoints)
+
+        self.rmf_remaining_path_waypoints = [
+            (i, waypoints[i]) for i in range(len(waypoints))
+        ]
 
         # We reverse this list so that we can pop it instead of traversing
         # it using an index (which is more Pythonic)
@@ -232,7 +261,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         # Construct robot state path list =====================================
         self.rmf_robot_state_path_locations = []
 
-        for waypoint in self.rmf_remaining_path_waypoints:
+        for (_, waypoint) in self.rmf_remaining_path_waypoints:
             # Split timestamp into decimal and whole second portions
             _sub_seconds, _seconds = math.modf(waypoint.time.timestamp())
 
@@ -243,8 +272,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             self.rmf_robot_state_path_locations.append(_msg)
 
         if not self.dry_run:
-            status = PutStatus(state_id=MiRState.READY)
-            self.mir_api.status_put(status)
+            state_id = MiRState.READY
+            self.mir_api.status_put(state_id)
 
         def path_following_closure():
             _current_waypoint = None
@@ -254,22 +283,31 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             # Kept alive if paused
             while ((self.rmf_remaining_path_waypoints or self.paused)
                     or _current_waypoint):
+                
+                # DEBUG PRINTOUT
+                print([str(x[1].graph_index) for x in self.rmf_remaining_path_waypoints])
+
                 if not self.paused:  # Skipped if paused
                     if _current_waypoint is None:
-                        _current_waypoint = (
+                        _, _current_waypoint = (
                             self.rmf_remaining_path_waypoints.pop()
                         )
                         self.rmf_path_requested = True
 
-                    waypoint_leave_msg = _current_waypoint.t
-                    ros_waypoint_leave_time = (
-                        waypoint_leave_msg.sec
-                        + waypoint_leave_msg.nanosec / 1e9
-                    )
+                    waypoint_leave_msg = _current_waypoint.time
+                    #ros_waypoint_leave_time = (
+                    #    waypoint_leave_msg.sec
+                    #    + waypoint_leave_msg.nanosec / 1e9
+                    #)
+                    ros_waypoint_leave_time = waypoint_leave_msg
 
                     ros_now = self.node.get_clock().now().nanoseconds / 1e9
-                    next_mission_wait = (ros_waypoint_leave_time - ros_now)
+                    next_mission_wait = (
+                        ros_waypoint_leave_time.timestamp() - ros_now
+                    )
+                    
                 else:
+                    print("Paused")
                     # Prevent spinning out of control when paused
                     self._path_quit_cv.acquire()
                     self._path_quit_cv.wait(1)
@@ -289,91 +327,122 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     and self.mir_state == MiRState.READY
                         and not self.paused):  # Skipped if paused
 
-                    # END =====================================================
-                    if not self.rmf_remaining_path_waypoints:  # We're done!
-                        self.rmf_path_requested = False
+                    with self._update_mutex:
+                        # END ==================================================
+                        if not self.rmf_remaining_path_waypoints:  # We're done!
+                            self.rmf_path_requested = False
+                            self.next_arrival_updater = None
 
-                        path_finished_callback()
+                            print("Path Finished Callback")
+                            path_finished_callback()
+                            self.execute_updates()
+
+                            return
+
+                        # ASSIGN NEXT TARGET ===================================
+                        else:
+                            _next_path_index, _next_waypoint = (
+                                self.rmf_remaining_path_waypoints[-1]
+                            )
+
+                            self.next_arrival_updater = (
+                                lambda p : next_arrival_estimator(
+                                    _next_path_index, self.estimate_arrival(
+                                        _next_waypoint.position, p
+                                    )
+                                )
+                            )
+
+                            # Grab graph indices
+                            if _next_waypoint.graph_index is not None:
+                                _next_index = _next_waypoint.graph_index
+                                self.rmf_map_name = self.get_map_name(
+                                    _next_index
+                                )
+                            else:
+                                _next_index = None
+
+                            if _current_waypoint.graph_index is not None:
+                                _current_index = (
+                                    _current_waypoint.graph_index
+                                )
+                            else:
+                                _current_index = None
+
+                            _current_waypoint = None
+
+                            # Update Internal Location Trackers ================
+                            # [IdleAtWaypoint -> RMF_Move]
+                            # [IdleAtLane -> RMF_Move]
+                            # [IdleAtUnknown -> RMF_Move]
+
+                            # Set target index
+                            self.rmf_target_waypoint_index = _next_index
+
+                            # Infer and set lane index
+                            if not self.rmf_current_lane_index:
+                                if _current_index is not None:
+                                    self.rmf_current_lane_index = (
+                                        self.rmf_lane_dict.get(
+                                            (_current_index, _next_index)
+                                        )
+                                    )
+                                    # DEBUG VARS
+                                    print(f"Current Lane Index: {self.rmf_current_lane_index}, Current Index: {_current_index}, Next Index : {_next_index}")
+
+                            # Unset current index
+                            self.rmf_current_waypoint_index = None
+
+                        # SEND NEXT TARGET =====================================
+                        _mir_pos = self.transforms['rmf_to_mir'].transform(
+                            [
+                                _next_waypoint.position[0],
+                                _next_waypoint.position[1]
+                            ]
+                        )
+                        _mir_ori_rad = (
+                            math.radians(_next_waypoint.position[2] % 360)
+                            + self.transforms['rmf_to_mir'].get_rotation()
+                        )
+
+                        # NOTE(CH3): MiR Location is sent in Degrees
+                        _mir_ori = math.degrees(_mir_ori_rad % (2 * math.pi)
+
+                        if _mir_ori > 180.0:
+                            _mir_ori = _mir_ori - 360.0
+                        elif _mir_ori <= -180.0:
+                            _mir_ori = _mir_ori + 360.0
+
+                        mir_location = MiRLocation(
+                            x=_mir_pos[0],
+                            y=_mir_pos[1],
+                            yaw=_mir_ori
+                        )
+
+                        print(f"RMF location x:{_next_waypoint.position[0]}"
+                            f"y:{_next_waypoint.position[1]}")
+                        print(f'MiR location: {mir_location}')
+
+                        print(f"RMF Index: {_next_waypoint.graph_index}")
+
+                        self.mir_state = None
+                        
+                        self.queue_move_coordinate_mission(mir_location)
                         self.execute_updates()
 
-                        return
+                        # DEBUGGING
+                        print(f'MiR state: {self.mir_state}')
 
-                    # ASSIGN NEXT TARGET ======================================
-                    else:
-                        _next_waypoint = self.rmf_remaining_path_waypoints[-1]
+                        continue
 
-                        # Grab graph indices
-                        if _next_waypoint.graph_index.has_value:
-                            _next_index = _next_waypoint.graph_index.value
-                        else:
-                            _next_index = None
+                    if not self.paused:  # Skipped if paused
+                        # Prevent spinning out of control
+                        if next_mission_wait <= 0:
+                            next_mission_wait = 0.1
 
-                        if _current_waypoint.graph_index.has_value:
-                            _current_index = (
-                                _current_waypoint.graph_index.value
-                            )
-                        else:
-                            _current_index = None
-
-                        _current_waypoint = None
-
-                        # Update Internal Location Trackers ===================
-                        # [IdleAtWaypoint -> RMF_Move]
-                        # [IdleAtLane -> RMF_Move]
-                        # [IdleAtUnknown -> RMF_Move]
-
-                        # Set target index
-                        self.rmf_target_waypoint_index = _next_index
-
-                        # Infer and set lane index
-                        if not self.rmf_current_lane_index:
-                            if _current_index is not None:
-                                self.rmf_current_lane_index = (
-                                    self.lane_dict.get((_current_index,
-                                                        _next_index))
-                                )
-
-                        # Unset current index
-                        self.rmf_current_waypoint_index = None
-
-                    # SEND NEXT TARGET ========================================
-                    _mir_pos = self.transforms['rmf_to_mir'].transform(
-                        [_next_waypoint.position[0],
-                         _next_waypoint.position[1]]
-                    )
-                    _mir_ori_rad = (
-                        math.radians(_next_waypoint.position[2] % 360)
-                        + self.transforms['rmf_to_mir'].get_rotation()
-                    )
-
-                    # NOTE(CH3): MiR Location is sent in Degrees
-                    _mir_ori = math.degrees(_mir_ori_rad % (2 * math.pi))
-
-                    if _mir_ori > 180.0:
-                        _mir_ori = _mir_ori - 360.0
-                    elif _mir_ori <= -180.0:
-                        _mir_ori = _mir_ori + 360.0
-
-                    mir_location = MiRLocation(x=_mir_pos[0],
-                                               y=_mir_pos[1],
-                                               yaw=_mir_ori)
-
-                    print(f"RMF location x:{_next_waypoint.position[0]}"
-                          f"y:{_next_waypoint.position[1]}")
-                    print(f'MiR location: {mir_location}')
-
-                    self.queue_move_coordinate_mission(mir_location)
-                    self.execute_updates()
-                    continue
-
-                if not self.paused:  # Skipped if paused
-                    # Prevent spinning out of control
-                    if next_mission_wait <= 0:
-                        next_mission_wait = 0.1
-
-                    self._path_quit_cv.acquire()
-                    self._path_quit_cv.wait(next_mission_wait)
-                    self._path_quit_cv.release()
+                        self._path_quit_cv.acquire()
+                        self._path_quit_cv.wait(next_mission_wait)
+                        self._path_quit_cv.release()
 
         self._path_quit_event.clear()
 
@@ -383,7 +452,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self._path_following_thread = threading.Thread(
             target=path_following_closure
         )
+
         self._path_following_thread.start()
+
 
     def dock(self, dock_name, docking_finished_callback):
         """Start thread to invoke MiR docking mission, then notify rmf_core."""
@@ -395,8 +466,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.rmf_docking_executed = False
 
         if not self.dry_run:
-            status = PutStatus(state_id=MiRState.READY)
-            self.mir_api.status_put(status)
+            state_id = MiRState.READY
+            self.mir_api.status_put(state_id)
 
         def dock_closure():
             if not self.dry_run:
@@ -458,6 +529,21 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self._docking_thread = threading.Thread(target=dock_closure)
         self._docking_thread.start()
 
+
+    def estimate_arrival(self, goal, current_position):
+        # We do a very rough estimate here which ignores acceleration and
+        # deceleration rates
+        dx = goal[0] - current_position[0]
+        dy = goal[1] - current_position[1]
+        translation = math.sqrt(dx*dx + dy*dy)
+        t_translation = translation/self.linear_velocity
+
+        rotation = math.fabs(math.fmod(goal[2] - current_position[2], math.pi))
+        t_rotation = rotation/self.angular_velocity
+
+        return t_translation + t_rotation
+
+
     ##########################################################################
     # INIT METHODS
     ##########################################################################
@@ -469,12 +555,12 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.node.get_logger().info('{self.name}: Retrieving MiR Missions...')
         robot_missions_ls = self.mir_api.missions_get()
         for i in robot_missions_ls:
-            if i.name not in self.mir_missions:
-                self.mir_missions[i.name] = i
+            if i['name'] not in self.mir_missions:
+                self.mir_missions[i['name']] = i
             else:
-                if "move_coordinate" in i.name:
-                    print("removing {}".format(i.name))
-                    self.mir_api.missions_guid_delete(i.guid)
+                if "move_coordinate" in i['name']:
+                    print("removing {}".format(i['name']))
+                    self.mir_api.missions_guid_delete(i['guid'])
 
         self.node.get_logger().info(
             f'retrieved {len(self.mir_missions)} missions'
@@ -490,18 +576,17 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
         for pos in self.mir_api.positions_get():
             if (
-                pos.name not in self.mir_positions
-                or pos.guid != self.mir_positions[pos.name].guid
+                pos['name'] not in self.mir_positions
+                or pos['guid'] != self.mir_positions[pos['name']]['guid']
             ):
                 if (
-                    pos.type_id == MiRPositionTypes.ROBOT
-                    or pos.type_id == MiRPositionTypes.CHARGING_STATION_ENTRY
+                    pos['type_id'] == MiRPositionTypes.ROBOT
+                    or pos['type_id'] == MiRPositionTypes.CHARGING_STATION_ENTRY
                 ):
-                    self.mir_positions[pos.name] = (
-                        self.mir_api.positions_guid_get(pos.guid)
+                    self.mir_positions[pos['name']] = (
+                        self.mir_api.positions_guid_get(pos['guid'])
                     )
                     count += 1
-
         self.node.get_logger().info(f'updated {count} positions')
 
     ##########################################################################
@@ -510,51 +595,55 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
     def queue_move_coordinate_mission(self, mir_location):
         """Add a move mission to the mission queue, creating when needed."""
         mission_name = ('move_coordinate_to'
-                        f'_{mir_location.x:.3f}',
-                        f'_{mir_location.y:.3f}',
+                        f'_{mir_location.x:.3f}'
+                        f'_{mir_location.y:.3f}'
                         f'_{mir_location.yaw:.3f}')
 
         # Get mission GUID. If missing, create one and save it.
-        mission_id = self.missions.get(
+        mission_id = self.mir_missions.get(
             mission_name, self.create_move_coordinate_mission(mir_location)
         )
 
         # Queue mission
         try:
-            mission = PostMissionQueues(mission_id=mission_id)
-            self.mir_api.mission_queue_post(mission)
-        except KeyError:
+            mission = mission_id
+            response = self.mir_api.mission_queue_post(mission)
+            self.node.get_logger().info(f'mission_queue_post info: {response}')
+        except Exception:
             self.node.get_logger().error(
                 '{self.name}: No mission to move coordinates to '
                 '[{mir_location.x:3f}_{mir_location.y:.3f}]!'
             )
 
+
     def create_move_coordinate_mission(self, mir_location, retries=10):
         mission_name = ('move_coordinate_to'
-                        f'_{mir_location.x:.3f}',
-                        f'_{mir_location.y:.3f}',
+                        f'_{mir_location.x:.3f}'
+                        f'_{mir_location.y:.3f}'
                         f'_{mir_location.yaw:.3f}')
 
-        mission = PostMissions(
-            group_id='mirconst-guid-0000-0001-missiongroup',
-            name=mission_name,
-            description='automatically created by mir fleet adapter',
-        )
-        response = self.mir_api.missions_post(mission)
-        action = PostMissionActions(
-            action_type='move_to_position',
-            mission_id=response.guid,
-            parameters=[
-                {'id': 'x', 'value': mir_location.x},
-                {'id': 'y', 'value': mir_location.y},
-                {'id': 'orientation', 'value': mir_location.yaw},
-                {'id': 'retries', 'value': retries},
-                {'id': 'distance_threshold', 'value': 0.1},
-            ],
-            priority=1
-        )
+        mission = {
+            "name": mission_name,
+            "group_id": "mirconst-guid-0000-0001-missiongroup",
+            "description": "automatically created by mir fleet adapter"
+            }
+        response = self.mir_api.missions_post(json.dumps(mission))
+       
+        action = {
+            "action_type": "move_to_position",
+            "mission_id": response['guid'],
+            "priority": 1,
+            "parameters":[
+                {"id": "x", "value": mir_location.x},
+                {"id": "y", "value": mir_location.y},
+                {"id": "orientation", "value": mir_location.yaw},
+                {"id": "retries", "value": retries},
+                {"id": "distance_threshold", "value": 0.1}
+            ]
+        }
+
         self.mir_api.missions_mission_id_actions_post(
-            mission_id=response.guid,
+            mission_id=response['guid'],
             body=action
         )
         self.node.get_logger().info(
@@ -562,22 +651,20 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             f'Created mission to move coordinate to "{mir_location}"'
         )
 
-        # NOTE(CH3): Unsure if I should be doing this
-        self.missions[mission_name] = response.guid
-
-        return response.guid
+         #NOTE(CH3): Unsure if I should be doing this
+        self.mir_missions[mission_name] = response['guid']
+        return response['guid']
 
     def queue_dock_mission(self, dock_name):
         """Add a dock mission to the mission queue, creating when needed."""
         mission_name = f'dock_to_{dock_name}'
 
         # Get mission GUID. If missing, create one and save it.
-        mission_id = self.missions.get(mission_name,
+        mission_id = self.mir_missions.get(mission_name,
                                        self.create_dock_mission(dock_name))
-
         # Queue mission
         try:
-            mission = PostMissionQueues(mission_id=mission_id)
+            mission = mission_id
             self.mir_api.mission_queue_post(mission)
         except KeyError:
             self.node.get_logger().error(
@@ -588,22 +675,22 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         """Create, POST, and populate MiR docking mission, then save it."""
         mission_name = f'dock_to_{dock_name}'
 
-        mission = PostMissions(
+        mission = {
             # mir const, retrieved with GET /mission_groups
-            group_id='mirconst-guid-0000-0001-missiongroup',
-            name=mission_name,
-            description='automatically created by mir fleet handler',
-        )
+            "group_id":"mirconst-guid-0000-0001-missiongroup",
+            "name":mission_name,
+            "description":"automatically created by mir fleet handler",
+        }
         response = self.mir_api.missions_post(mission)
 
-        action = PostMissionActions(
-            action_type='docking',
-            mission_id=response.guid,
-            parameters=[
-                {'id': 'marker', 'value': dock_name},
+        action = {
+            "action_type":"docking",
+            "mission_id":response["guid"],
+            "parameters":[
+                {"id": "marker", "value": dock_name}
             ],
-            priority=1
-        )
+            "priority":1
+        }
         self.mir_api.missions_mission_id_actions_post(
             mission_id=response.guid,
             body=action
@@ -613,10 +700,10 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             f'created mission to move and dock to: "{dock_name}"'
         )
 
-        # NOTE(CH3): Unsure if I should be doing this
-        self.missions[mission_name] = response.guid
+        #NOTE(CH3): Unsure if I should be doing this
+        self.mir_missions[mission_name] = response['guid']
 
-        return response.guid
+        return response['guid']
 
     ##########################################################################
     # RMF CORE INTERACTION METHODS
@@ -633,7 +720,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     return [0.0, 0.0, 0.0]
 
         mir_pos = [api_response.position.x, api_response.position.y]
-        mir_ori = api_response.position.yaw
+        mir_ori = api_response.position.orientation
 
         # Output is [x, y, yaw]
         if rmf:
@@ -660,41 +747,73 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             if not self.dry_run:
                 api_response = self.mir_api.status_get()
             else:
-                self.rmf_updater.update_position(self.rmf_map_name,
-                                                 [0.0, 0.0, 0.0])
+                self.rmf_updater.update_lost_position(
+                    self.rmf_map_name, [0.0, 0.0, 0.0]
+                )
                 self.node.get_logger().info("[DRYRUN] Updated Position: "
                                             "pos: [0, 0] | ori: [0]")
                 return
 
-        mir_pos = [api_response.position.x, api_response.position.y]
-        mir_ori = api_response.position.yaw
-
+        mir_pos = [api_response['position']['x'], api_response['position']['y']]
+        mir_ori = api_response['position']['orientation']
+        
         rmf_pos = self.transforms['mir_to_rmf'].transform(mir_pos)
         rmf_ori = (math.radians(mir_ori % 360)
                    + self.transforms['mir_to_rmf'].get_rotation())
 
         rmf_3d_pos = [*rmf_pos, rmf_ori]
 
+        print("Updating")
+
         # At waypoint
         # States: (0, 1, 0)
         if self.rmf_current_waypoint_index is not None:
-            self.rmf_updater.update_position(self.rmf_current_waypoint_index,
-                                             self.rmf_ori)
+            self.rmf_updater.update_current_waypoint(
+                self.rmf_current_waypoint_index, rmf_ori
+            )
+            # DEBUG VARIABLES
+            update_type = 0
+            if update_type != self.last_update_type:
+                print(f"Update Type: 0 Current Waypoint: {self.rmf_current_waypoint_index}, Orientation: {rmf_ori}")
+
         # In Transit or Idle in Lane
         # States: (1, 0, 0), (1, 0, 1)
         elif self.rmf_current_lane_index is not None:
-            self.rmf_updater.update_position(rmf_3d_pos,
-                                             self.rmf_current_lane_index)
+            self.rmf_updater.update_current_lanes(
+                rmf_3d_pos, self.rmf_current_lane_index
+            )
+
+            # DEBUG VARIABLES
+            update_type = 1
+            if update_type != self.last_update_type:
+                print(f"Update Type: 1 Current Location: {rmf_3d_pos}, Current Lane Index: {self.rmf_current_lane_index}")
+
         # In Transit, Unknown Lane
         # States: (0, 0, 1)
         elif self.rmf_target_waypoint_index is not None:  # In Unknown Lane
-            self.rmf_updater.update_position(rmf_3d_pos,
-                                             self.rmf_target_waypoint_index)
+            self.rmf_updater.update_off_grid_position(
+                rmf_3d_pos, self.rmf_target_waypoint_index
+            )
+
+            # DEBUG VARIABLES
+            update_type = 2
+            if update_type != self.last_update_type:
+                print(f"Update Type: 2 Current Location: {rmf_3d_pos}, Target Waypoint Index: {self.rmf_target_waypoint_index}")
+
         # Lost or MiR Commanded
         # States: (0, 0, 0)
         else:
-            self.rmf_updater.update_position(self.rmf_map_name,
-                                             rmf_3d_pos)
+            self.rmf_updater.update_lost_position(
+                self.rmf_map_name, rmf_3d_pos
+            )
+
+            # DEBUG VARIABLES
+            update_type = 3
+            if update_type != self.last_update_type:
+                print(f"Update Type: 3 Current Map Name: {self.rmf_map_name}, Current Location: {rmf_3d_pos}")
+
+        if self.next_arrival_updater:
+            self.next_arrival_updater(rmf_3d_pos)
 
         self.node.get_logger().info(f"Updated Position: pos: {rmf_pos} | "
                                     f"ori: {rmf_ori}")
@@ -758,8 +877,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             if api_response is None:
                 api_response = self.mir_api.status_get()
 
-            now_sec, now_ns = math.modf(
-                self.node.get_clock().now().seconds_nanoseconds())
+            #now_sec, now_ns = math.modf(
+            #    self.node.get_clock().now().seconds_nanoseconds())
+            now_sec, now_ns = self.node.get_clock().now().seconds_nanoseconds()
 
             # Populate Location message
             rmf_location = Location()
@@ -768,36 +888,36 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             )
 
             rmf_location.level_name = self.rmf_map_name
-
+            self.node.get_logger().info(f'The rmf map name: {self.rmf_map_name}')
             # Populate RobotState message
             robot_state.task_id = str(self.current_task_id)
-            robot_state.battery_percent = api_response.battery_percentage
+            robot_state.battery_percent = api_response['battery_percentage']
 
             robot_state.location = rmf_location
             robot_state.path = self.rmf_robot_state_path_locations
             robot_state.location.t.sec = now_sec
             robot_state.location.t.nanosec = now_ns
 
-            if api_response.mission_text.startswith('Charging'):  # Charging
+            if api_response['mission_text'].startswith('Charging'):  # Charging
                 robot_state.mode.mode = RobotMode.MODE_CHARGING
                 self.mir_state = MiRState.READY
-            elif api_response.state_id == MiRState.PAUSE:  # Paused/Pre-empted
+            elif api_response['state_id'] == MiRState.PAUSE:  # Paused/Pre-empted
                 self.pause()
                 robot_state.mode.mode = RobotMode.MODE_PAUSED
                 self.mir_state = MiRState.PAUSE
-            elif (api_response.state_id == MiRState.EXECUTING  # Moving
-                  and not api_response.mission_text.startswith('Charging')):
+            elif (api_response['state_id'] == MiRState.EXECUTING  # Moving
+                  and not api_response['mission_text'].startswith('Charging')):
                 self.resume()
                 robot_state.mode.mode = RobotMode.MODE_MOVING
                 self.mir_state = MiRState.EXECUTING
-            elif api_response.state_id == MiRState.READY:  # Idle/Moved
+            elif api_response['state_id'] == MiRState.READY:  # Idle/Moved
                 self.resume()
                 robot_state.mode.mode = RobotMode.MODE_IDLE
                 self.mir_state = MiRState.READY
 
             if self.rmf_docking_requested:
                 if self.rmf_docking_executed:  # Docked
-                    if api_response.state_id == MiRState.READY:
+                    if api_response['state_id'] == MiRState.READY:
                         robot_state.mode.mode = RobotMode.MODE_IDLE
                     else:  # Docking
                         robot_state.mode.mode = RobotMode.MODE_DOCKING
@@ -808,10 +928,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             self.last_robot_state_update = (
                 self.node.get_clock().now().nanoseconds / 1e9
             )
-        except ApiException as e:
-            self.node.get_logger().warn('Exception when calling '
-                                        'DefaultApi->status_get: %s\n'
-                                        % e)
+        except Exception as e:
+            self.node.get_logger().warn(f'Exception: {e}')
 
     ##########################################################################
     # INTERNAL UPDATE LOOP
@@ -827,30 +945,42 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.state_update_timer.reset()
 
 
+    def lock_and_execute_updates(self):
+        with self._update_mutex:
+            self.execute_updates()
+
+
+    def get_map_name(self, graph_index):
+        self.node.get_logger().info(str(self.rmf_graph.get_waypoint(graph_index)))
+        return self.rmf_graph.get_waypoint(graph_index).map_name
+
 ###############################################################################
 # HELPER FUNCTIONS AND CLASSES
 ###############################################################################
-class MiRRetryContext():
-    """Context to prevent race conditions during robot startup."""
-    def __init__(self, robot):
-        self.robot = robot
-        self.connection_pool_kw = (self.robot
-                                   .mir_api
-                                   .api_client
-                                   .rest_client
-                                   .pool_manager.connection_pool_kw)
-        self.orig_retries = self.connection_pool_kw.get('retries')
+# class MiRRetryContext():
+#     """Context to prevent race conditions during robot startup."""
+#     def __init__(self, robot):
+#         self.robot = robot
+#         self.connection_pool_kw = (
+#             self.robot
+#             .mir_api
+#             .api_client
+#             .rest_client
+#             .pool_manager
+#             .connection_pool_kw
+#         )
+#         self.orig_retries = self.connection_pool_kw.get('retries')
 
-    def __enter__(self):
-        retries = urllib3.Retry(10)
-        retries.backoff_factor = 1
-        retries.status_forcelist = (404,)
-        self.connection_pool_kw['retries'] = retries
+#     def __enter__(self):
+#         retries = urllib3.Retry(10)
+#         retries.backoff_factor = 1
+#         retries.status_forcelist = (404,)
+#         self.connection_pool_kw['retries'] = retries
 
-        return self.robot
+#         return self.robot
 
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        if self.orig_retries is not None:
-            self.connection_pool_kw['retries'] = self.orig_retries
-        else:
-            del self.connection_pool_kw['retries']
+#     def __exit__(self, exc_type, exc_value, exc_traceback):
+#         if self.orig_retries is not None:
+#             self.connection_pool_kw['retries'] = self.orig_retries
+#         else:
+#             del self.connection_pool_kw['retries']
