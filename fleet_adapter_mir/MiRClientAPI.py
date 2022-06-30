@@ -3,6 +3,10 @@ import json
 from urllib.error import HTTPError
 
 
+__all__ = [
+    "MirAPI"
+]
+
 
 class MirAPI:
     def __init__(self, prefix, headers, timeout=10.0, debug=False):
