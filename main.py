@@ -1,5 +1,4 @@
-from fleet_adapter_mir import MiRCommandHandle
-from MiRClientAPI import MirAPI
+from fleet_adapter_mir import MiRCommandHandle, MirAPI
 
 from rmf_fleet_msgs.msg import FleetState
 from rmf_task_msgs.msg import TaskProfile, TaskType

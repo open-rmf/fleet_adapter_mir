@@ -1,19 +1,23 @@
 # fleet_adapter_mir
-MiR100 Fleet Adapter using the https://github.com/osrf/rmf_fleet_adapter_python
+MiR100 Fleet Adapter using the https://github.com/open-rmf/rmf_ros2/tree/main/rmf_fleet_adapter_python
 
  
 
 ## Pre-Requisites
 
-- ROS2
-- [rmf_core](https://github.com/osrf/rmf_core)
-- [rmf_fleet_adapter_python](https://github.com/osrf/rmf_fleet_adapter_python)
+- ROS 2 (Foxy onwards)
+- [open-rmf](https://github.com/open-rmf/rmf) (source build recommended)
 
 
 
 ## Installation
 
-Place the pre-requisite packages into your ROS2 workspace, and run `colcon build` as per normal, remembering to source the workspace.
+If a source build of `open-rmf` is used, source the built workspace as an underlay, and clone the repository.
+
+```bash
+source ~/rmf_ws/install/setup.bash
+git clone https://github.com/osrf/fleet_adapter_mir ~/fleet_adapter_mir
+```
 
 
 
@@ -21,9 +25,9 @@ Place the pre-requisite packages into your ROS2 workspace, and run `colcon build
 
 This package implements a MiR robot command handle that is managed by a fleet adapter in Python. (Along with some helpers.) It can be used to command and manage a fleet of MiR 100 robots using RMF!
 
-It uses the `rmf_fleet_adapter_python` bindings, which allows for communication with `rmf_core` libraries and ROS2 nodes.
+It uses the `rmf_fleet_adapter_python` bindings, which allows for communication with `open-rmf` libraries and ROS2 nodes.
 
-In effect, it interfaces the MiR REST API with `rmf_core`, all without needing to directly use ROS2 messages to communicate with `rmf_core`!
+In effect, it interfaces the MiR REST API with `open-rmf`, all without needing to directly use ROS 2 messages to communicate with `open-rmf`!
 
 
 
@@ -35,20 +39,20 @@ An example usage of the implemented adapter can be found in the `main.py` file. 
 
 Call it like so:
 
-```shell
-# Remember to source the workspace you've installed the pre-requisites in!
+```bash
+# Remember to source the underlay workspace!
 
 # Get help
-$ python3 main.py -h
+python3 main.py -h
 
-# Run in dry-run mode. Disables ROS2 publishing and MiR REST calls
-$ python3 main.py mir_config.yaml -d
+# Run in dry-run mode. Disables ROS 2 publishing and MiR REST calls
+python3 main.py -c mir_config.yaml -n nav_graph.yaml -d
 ```
 
-Alternatively, if you want to run everything with full capabilities, (though note that it will require an `rmf_core` schedule node to be active, and the MiR REST server to be available)
+Alternatively, if you want to run everything with full capabilities, (though note that it will require an `rmf_traffic_ros2` schedule node to be active, and the MiR REST server to be available)
 
-```shell
-$ python3 main.py mir_config.yaml
+```bash
+python3 main.py -c mir_config.yaml -n nav_graph.yaml
 ```
 
 
@@ -88,9 +92,9 @@ The example script `main.py` does this.
 
 ### Robot Transforms: Two Coordinate Systems
 
-Since we are interfacing MiR and `rmf_core`, we need to deal with two coordinate systems and two forms of 'maps'.
+Since we are interfacing MiR and `open-rmf`, we need to deal with two coordinate systems and two forms of 'maps'.
 
-We have to deal with the `rmf_core` navgraph and the MiR map, with their own individual coordinate systems, waypoints/positions, and waypoint keys/position names.
+We have to deal with the `rmf_traffic` navgraph and the MiR map, with their own individual coordinate systems, waypoints/positions, and waypoint keys/position names.
 
 Luckily, we can leverage the `nudged` Python library to compute coordinate transforms between the two sets of coordinates. You just have to make sure to provide equivalent reference points within the two maps so transforms can be computed.
 
@@ -108,7 +112,7 @@ In order for the appropriate `RobotUpdateHandle.update_position()` method calls 
 
 The trouble is, since we are using the MiR REST API, the only way we can obtain information about the robot's state is by polling it via REST calls.
 
-Even harder than that, the MiR REST API does not care to store information about the `rmf_core` navigation graph, and any goals that are set with respect ot that. In fact, the corresponding path following calls that `rmf_core` issues gets translated into move-to-coordinate missions for the MiR to execute.
+Even harder than that, the MiR REST API does not care to store information about the `rmf_traffic` navigation graph, and any goals that are set with respect to that. In fact, the corresponding path following calls that `open-rmf` issues gets translated into move-to-coordinate missions for the MiR to execute.
 
 This is **very messy**. Mainly because we cannot immediately infer the semantic state of the robot (with respect to RMF.) Instead, we have to infer it based off of what we know, from the tracking variables we are using, and the robot's mode.
 
@@ -132,7 +136,7 @@ The `RobotState` with the following robot modes:
 - `MODE_PAUSED`: Interrupted
 - `MODE_DOCKING`: Docking
 
-And a flag that gets set whenever the robot is executing a path following request from `rmf_core`:
+And a flag that gets set whenever the robot is executing a path following request from `open-rmf`:
 
 - `rmf_path_requested`: `True` if executing a path request, `False` once complete
 

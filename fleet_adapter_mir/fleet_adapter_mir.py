@@ -285,7 +285,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     or _current_waypoint):
                 
                 # DEBUG PRINTOUT
-                print([str(x[1].graph_index) for x in self.rmf_remaining_path_waypoints])
+                # print([str(x[1].graph_index) for x in self.rmf_remaining_path_waypoints])
 
                 if not self.paused:  # Skipped if paused
                     if _current_waypoint is None:
@@ -406,7 +406,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                         )
 
                         # NOTE(CH3): MiR Location is sent in Degrees
-                        _mir_ori = math.degrees(_mir_ori_rad % (2 * math.pi)
+                        _mir_ori = math.degrees(_mir_ori_rad % (2 * math.pi))
 
                         if _mir_ori > 180.0:
                             _mir_ori = _mir_ori - 360.0
