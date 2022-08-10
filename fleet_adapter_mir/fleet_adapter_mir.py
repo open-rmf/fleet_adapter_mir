@@ -100,7 +100,7 @@ def create_fleet(config,nav_graph_path,task_request_check, mock):
         config['rmf_fleet']['cleaning_system']['power'])
     motion_sink = battery.SimpleMotionPowerSink(battery_sys,mech_sys)
     ambient_sink = battery.SimpleDevicePowerSink(battery_sys, ambient_power_sys)
-
+    tool_sink = battery.SimpleDevicePowerSink(battery_sys, tool_power_sys)
 
     nav_graph = graph.parse_graph(nav_graph_path, robot_traits)
 
@@ -122,6 +122,18 @@ def create_fleet(config,nav_graph_path,task_request_check, mock):
     drain_battery = config['rmf_fleet']['account_for_battery_drain']
     recharge_threshold = config['rmf_fleet']['recharge_threshold']
     recharge_soc = config['rmf_fleet']['recharge_soc']
+    finishing_request = config['rmf_fleet']['task_capabilities']['finishing_request']
+    # Set task planner params
+    ok = fleet.set_task_planner_params(
+        battery_sys,
+        motion_sink,
+        ambient_sink,
+        tool_sink,
+        recharge_threshold,
+        recharge_soc,
+        drain_battery,
+        finishing_request)
+    assert ok, ("Unable to set task planner params")
 
     if task_request_check is None:
         # Naively accept all delivery requests
@@ -186,7 +198,9 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
                 handle_data['graph'],
                 start_config['map_name'],
                 robot.get_position(rmf=True, as_dimensions=True),
-                handle_data['adapter'].now()
+                handle_data['adapter'].now(),
+                max_merge_waypoint_distance = start_config["max_merge_waypoint_distance"],
+                max_merge_lane_distance = start_config["max_merge_lane_distance"]
             )
         assert starts, ("Robot %s can't be placed on the nav graph!"
                         % robot_name)
