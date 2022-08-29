@@ -158,6 +158,11 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             self.lock_and_execute_updates
         )
 
+    ############################################################################
+    # Init RobotUpdateHandle class member
+    def init_updater(self, updater):
+        self.rmf_updater = updater
+
     ##########################################################################
     # ROBOTCOMMANDHANDLE OVERLOADS (DO NOT CHANGE METHOD SIGNATURES)
     ##########################################################################

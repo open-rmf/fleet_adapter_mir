@@ -220,18 +220,12 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
         print("MAP_NAME:", start_config['map_name'])
         robot.rmf_map_name = start_config['map_name']
 
-        # INSERT UPDATER ======================================================
-        def updater_inserter(handle_obj, rmf_updater):
-            """Insert a RobotUpdateHandle."""
-            handle_obj.rmf_updater = rmf_updater
-
         handle_data['fleet_handle'].add_robot(
             robot,
             robot.name,
             handle_data['robot_traits'].profile,
             starts,
-            partial(updater_inserter, robot)
-        )
+            lambda rmf_updater: robot.init_updater(rmf_updater))
 
         handle_data['node'].get_logger().info(
             f"successfully initialized robot {robot.name}"
