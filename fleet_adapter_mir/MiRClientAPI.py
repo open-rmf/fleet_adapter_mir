@@ -25,7 +25,7 @@ class MirAPI:
             print(f"HTTP error: {http_err}")
         except Exception as err:
             print(f"Other error: {err}")
-         
+
     def status_get(self):
         if not self.connected:
             return
@@ -49,7 +49,7 @@ class MirAPI:
             print(f"HTTP error: {http_err}")
         except Exception as err:
             print(f"Other error: {err}")
-    
+
     def positions_get(self):
         if not self.connected:
             return
@@ -62,6 +62,17 @@ class MirAPI:
             print(f"HTTP error: {http_err}")
         except Exception as err:
             print(f"Other error: {err}")
+
+    def mission_queue_id_get(self, mission_queue_id):
+        if not self.connected:
+            return
+        try:
+            response = requests.get(self.prefix + f'mission_queue/{mission_queue_id}', headers = self.headers, timeout=self.timeout)
+            return response.json()
+        except HTTPError as http_err:
+            print(f"HTTP error: {http_err}")
+        except Exception as err:
+            print(f"Other here error: {err}")
 
     def mission_queue_post(self, mission_id):
         if not self.connected:
@@ -81,7 +92,7 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.post(self.prefix + 'missions/' +mission_id +'/actions' , headers = self.headers, data=json.dumps(body), timeout = self.timeout)
+            response = requests.post(self.prefix + 'missions/' + mission_id +'/actions' , headers = self.headers, data=json.dumps(body), timeout = self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
                 print(response.status_code)
@@ -130,7 +141,7 @@ class MirAPI:
             print(f"HTTP error: {http_err}")
         except Exception as err:
             print(f"Other error: {err}")
-                
+
     def mission_queue_delete(self):
         if not self.connected:
             return

@@ -130,8 +130,14 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         # RMF Execution Flags =================================================
         self.rmf_docking_executed = False
         self.rmf_docking_requested = False
-
         self.rmf_path_requested = False
+
+        # RMF perform action===================================================
+        self.action_category = None
+        self.action_description = None
+        self.action_start_time = None
+        self.action_execution = None
+        self.action_check_task_completion = None
 
         # MiR Variables =======================================================
         self.mir_name = ""  # Name of robot on MiR REST server
@@ -162,6 +168,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
     # Init RobotUpdateHandle class member
     def init_updater(self, updater):
         self.rmf_updater = updater
+        self.rmf_updater.set_action_executor(self._action_executor)
 
     ##########################################################################
     # ROBOTCOMMANDHANDLE OVERLOADS (DO NOT CHANGE METHOD SIGNATURES)
@@ -548,6 +555,62 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
         return t_translation + t_rotation
 
+    def _action_executor(self,
+                         category: str,
+                         description: dict,
+                         execution: adpt.robot_update_handle.ActionExecution):
+        with self._update_mutex:
+            # Get list of missions, get guid of mission
+            missions = self.mir_api.missions_get()
+            mission_guid = None
+            for m in missions:
+                if m['name'] == category:
+                    mission_guid = m['guid']
+            if mission_guid is None:
+                self.node.get_logger().error(f'Action category {category} not supported, ignoring')
+                return
+
+            # Start mission
+            response = self.mir_api.mission_queue_post(mission_guid)
+            mission_queue_id = response['id']
+
+            # Load self.action_check_task_completion
+            def _check_task_completion():
+                mission_status = self.mir_api.mission_queue_id_get(mission_queue_id)
+                if 'finished' in mission_status and mission_status['finished'] is not None:
+                    return True
+                return False
+            self.action_check_task_completion = _check_task_completion
+
+            # Keep track of perform action
+            self.node.get_logger().warn(f"Robot [{self.name}] starts [{category}] action")
+            self.action_category = category
+            self.action_description = description
+            self.action_start_time = self.node.get_clock().now()
+            self.action_execution = execution
+
+    def check_perform_action(self):
+        self.node.get_logger().info(f'Executing perform action: {self.action_category}')
+        action_ok = self.action_execution.okay()
+        if self.action_check_task_completion() or not action_ok:
+            if action_ok:
+                self.node.get_logger().info(
+                    f"action [{self.action_category}] is completed")
+                self.action_execution.finished()
+            else:
+                self.node.get_logger().warn(
+                    f"action [{self.action_category}] is killed/canceled")
+            self.action_execution = None
+            self.action_category = None
+            self.action_description = None
+            self.action_start_time = None
+            self.action_check_task_completion
+            return
+
+        # Still executing perform action
+        # TODO(AA): Update accurate remaining time
+        self.action_execution.update_remaining_time(timedelta(seconds=10.0))
+        # TODO(AA): Update self.action_execution state
 
     ##########################################################################
     # INIT METHODS
@@ -950,6 +1013,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.update_internal_robot_state(api_response=api_response)
         self.update_internal_location_trackers()
         self.update_position(api_response=api_response)
+
+        if (self.action_execution):
+            self.check_perform_action()
 
         self.state_update_timer.reset()
 

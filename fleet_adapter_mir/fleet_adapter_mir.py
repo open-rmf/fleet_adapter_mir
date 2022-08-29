@@ -135,11 +135,23 @@ def create_fleet(config,nav_graph_path,task_request_check, mock):
         finishing_request)
     assert ok, ("Unable to set task planner params")
 
-    if task_request_check is None:
-        # Naively accept all delivery requests
-        fleet.accept_task_requests(lambda x: True)
-    else:
-        fleet.accept_task_requests(task_request_check)
+    # Whether to accept custom RMF action tasks
+    # TODO(AA): Refactor this
+    def _consider(description: dict):
+        confirm = adpt.fleet_update_handle.Confirmation()
+
+        if (description['category'] == 'dock_to_48v_charger'):
+            print('accepting dock_to_48v_charger')
+            confirm.accept()
+
+        return confirm
+    fleet.add_performable_action('dock_to_48v_charger', _consider)
+
+    # if task_request_check is None:
+    #     # Naively accept all delivery requests
+    #     fleet.accept_task_requests(lambda x: True)
+    # else:
+    #     fleet.accept_task_requests(task_request_check)
 
     return adapter, fleet, fleet_name, robot_traits, nav_graph
 
