@@ -19,7 +19,8 @@ robots:
       robot_state_update_frequency: 1
       start:
         map_name: "L1"
-
+        max_merge_waypoint_distance: 3.0
+        max_merge_lane_distance: 3.0
         # NOTE(CH3):
         # If you leave these empty, the robot will try to figure it out on init
         # from the MiR reported location.
@@ -28,6 +29,8 @@ robots:
         # ON the waypoint!
         waypoint_index: 0 # Optional
         orientation: 0.0 # Optional, radians
+      charger:
+        waypoint: "charger_waypoint"
 
 
 # NODE CONFIG ==================================================================
@@ -93,3 +96,4 @@ rmf_fleet:
     delivery: False
     clean: False
     finishing_request: "nothing" # [park, charge, nothing]
+    action_categories: ["dock_to_charger", "custom_mission_1"]
