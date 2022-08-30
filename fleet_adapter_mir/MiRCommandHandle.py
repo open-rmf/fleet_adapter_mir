@@ -145,6 +145,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.mir_positions = {}  # MiR Place Name-GUID Dict
         self.mir_api = None  # MiR REST API
         self.mir_state = MiRState.PAUSE
+        self.mir_variable_move_mission = None
 
         # Thread Management ===================================================
         # Path queue execution thread
@@ -439,7 +440,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
                         self.mir_state = None
 
-                        self.queue_move_coordinate_mission(mir_location)
+                        self.queue_variable_move_coordinate_mission(mir_location)
+                        # self.queue_move_coordinate_mission(mir_location)
                         self.execute_updates()
 
                         # DEBUGGING
@@ -660,68 +662,89 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
     ##########################################################################
     # MISSION METHODS
     ##########################################################################
-    def queue_move_coordinate_mission(self, mir_location):
-        """Add a move mission to the mission queue, creating when needed."""
-        mission_name = ('move_coordinate_to'
-                        f'_{mir_location.x:.3f}'
-                        f'_{mir_location.y:.3f}'
-                        f'_{mir_location.yaw:.3f}')
-
-        # Get mission GUID. If missing, create one and save it.
-        mission_id = self.mir_missions.get(
-            mission_name, self.create_move_coordinate_mission(mir_location)
-        )
-
-        # Queue mission
+    def queue_variable_move_coordinate_mission(self, mir_location):
+        variable_move_mission_guid = \
+            self.mir_missions[self.mir_variable_move_mission]['guid']
+        mission = {
+            'mission_id': variable_move_mission_guid,
+            'parameters': [
+                {'id': 'x', 'value': mir_location.x, 'label': f'{mir_location.x:.3f}'},
+                {'id': 'y', 'value': mir_location.y, 'label': f'{mir_location.y:.3f}'},
+                {'id': 'yaw', 'value': mir_location.yaw, 'label': f'{mir_location.yaw:.3f}'}
+            ],
+            "priority": 0,
+            "description": "variable move mission to be called by open-rmf"
+        }
         try:
-            mission = mission_id
-            response = self.mir_api.mission_queue_post(mission)
-            self.node.get_logger().info(f'mission_queue_post info: {response}')
+            response = self.mir_api.mission_queue_post(variable_move_mission_guid, mission)
         except Exception:
             self.node.get_logger().error(
-                '{self.name}: No mission to move coordinates to '
+                '{self.name}: Failed to call variable move mission to '
                 '[{mir_location.x:3f}_{mir_location.y:.3f}]!'
             )
 
+    # def queue_move_coordinate_mission(self, mir_location):
+    #     """Add a move mission to the mission queue, creating when needed."""
+    #     mission_name = ('move_coordinate_to'
+    #                     f'_{mir_location.x:.3f}'
+    #                     f'_{mir_location.y:.3f}'
+    #                     f'_{mir_location.yaw:.3f}')
 
-    def create_move_coordinate_mission(self, mir_location, retries=10):
-        mission_name = ('move_coordinate_to'
-                        f'_{mir_location.x:.3f}'
-                        f'_{mir_location.y:.3f}'
-                        f'_{mir_location.yaw:.3f}')
+    #     # Get mission GUID. If missing, create one and save it.
+    #     mission_id = self.mir_missions.get(
+    #         mission_name, self.create_move_coordinate_mission(mir_location)
+    #     )
 
-        mission = {
-            "name": mission_name,
-            "group_id": "mirconst-guid-0000-0001-missiongroup",
-            "description": "automatically created by mir fleet adapter"
-            }
-        response = self.mir_api.missions_post(json.dumps(mission))
+    #     # Queue mission
+    #     try:
+    #         mission = mission_id
+    #         response = self.mir_api.mission_queue_post(mission)
+    #         self.node.get_logger().info(f'mission_queue_post info: {response}')
+    #     except Exception:
+    #         self.node.get_logger().error(
+    #             '{self.name}: No mission to move coordinates to '
+    #             '[{mir_location.x:3f}_{mir_location.y:.3f}]!'
+    #         )
 
-        action = {
-            "action_type": "move_to_position",
-            "mission_id": response['guid'],
-            "priority": 1,
-            "parameters":[
-                {"id": "x", "value": mir_location.x},
-                {"id": "y", "value": mir_location.y},
-                {"id": "orientation", "value": mir_location.yaw},
-                {"id": "retries", "value": retries},
-                {"id": "distance_threshold", "value": 0.1}
-            ]
-        }
 
-        self.mir_api.missions_mission_id_actions_post(
-            mission_id=response['guid'],
-            body=action
-        )
-        self.node.get_logger().info(
-            f'{self.name}: '
-            f'Created mission to move coordinate to "{mir_location}"'
-        )
+    # def create_move_coordinate_mission(self, mir_location, retries=10):
+    #     mission_name = ('move_coordinate_to'
+    #                     f'_{mir_location.x:.3f}'
+    #                     f'_{mir_location.y:.3f}'
+    #                     f'_{mir_location.yaw:.3f}')
 
-         #NOTE(CH3): Unsure if I should be doing this
-        self.mir_missions[mission_name] = response['guid']
-        return response['guid']
+    #     mission = {
+    #         "name": mission_name,
+    #         "group_id": "mirconst-guid-0000-0001-missiongroup",
+    #         "description": "automatically created by mir fleet adapter"
+    #         }
+    #     response = self.mir_api.missions_post(json.dumps(mission))
+
+    #     action = {
+    #         "action_type": "move_to_position",
+    #         "mission_id": response['guid'],
+    #         "priority": 1,
+    #         "parameters":[
+    #             {"id": "x", "value": mir_location.x},
+    #             {"id": "y", "value": mir_location.y},
+    #             {"id": "orientation", "value": mir_location.yaw},
+    #             {"id": "retries", "value": retries},
+    #             {"id": "distance_threshold", "value": 0.1}
+    #         ]
+    #     }
+
+    #     self.mir_api.missions_mission_id_actions_post(
+    #         mission_id=response['guid'],
+    #         body=action
+    #     )
+    #     self.node.get_logger().info(
+    #         f'{self.name}: '
+    #         f'Created mission to move coordinate to "{mir_location}"'
+    #     )
+
+    #      #NOTE(CH3): Unsure if I should be doing this
+    #     self.mir_missions[mission_name] = response['guid']
+    #     return response['guid']
 
     def queue_dock_mission(self, dock_name):
         """Add a dock mission to the mission queue, creating when needed."""
