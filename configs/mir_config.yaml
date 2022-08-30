@@ -11,9 +11,10 @@ robots:
   # So for now, this name is the name used in the script only.
   my_test_robot:
     mir_config:
-      base_url: "http://some_url"
-      user: "some_user"
-      password: "some_password"
+      base_url: "http://some.ip.address/api/v2.0.0/"
+      user: "application/json"
+      password: "Basic HASH_OF_PASSWORD_OBTAINED_AT_API_DOCUMENTATION_PAGE"
+      variable_move_mission: "rmf_default_move_mission"
 
     rmf_config:
       robot_state_update_frequency: 1
