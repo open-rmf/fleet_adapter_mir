@@ -71,7 +71,7 @@ def compute_transforms(rmf_coordinates, mir_coordinates, node=None):
     return transforms
 
 
-def create_fleet(config,nav_graph_path,task_request_check, mock):
+def create_fleet(config,nav_graph_path, mock):
     """Create RMF Adapter, FleetUpdateHandle, and parse navgraph."""
     profile = traits.Profile(
         geometry.make_final_convex_circle(config['rmf_fleet']['profile']['footprint']),
@@ -122,7 +122,9 @@ def create_fleet(config,nav_graph_path,task_request_check, mock):
     drain_battery = config['rmf_fleet']['account_for_battery_drain']
     recharge_threshold = config['rmf_fleet']['recharge_threshold']
     recharge_soc = config['rmf_fleet']['recharge_soc']
-    finishing_request = config['rmf_fleet']['task_capabilities']['finishing_request']
+
+    task_capabilities_config = config['rmf_fleet']['task_capabilities']
+    finishing_request = task_capabilities_config['finishing_request']
     # Set task planner params
     ok = fleet.set_task_planner_params(
         battery_sys,
@@ -135,23 +137,29 @@ def create_fleet(config,nav_graph_path,task_request_check, mock):
         finishing_request)
     assert ok, ("Unable to set task planner params")
 
+    # Accept Standard RMF Task which are defined in config.yaml
+    always_accept = adpt.fleet_update_handle.Confirmation()
+    always_accept.accept()
+    if task_capabilities_config['loop']:
+        print(f"Fleet [{fleet_name}] is configured to perform Loop tasks")
+        fleet.consider_patrol_requests(lambda desc: always_accept)
+    if task_capabilities_config['delivery']:
+        print(f"Fleet [{fleet_name}] is configured to perform Delivery tasks")
+        fleet.consider_delivery_requests(lambda desc: always_accept)
+
     # Whether to accept custom RMF action tasks
-    # TODO(AA): Refactor this
     def _consider(description: dict):
         confirm = adpt.fleet_update_handle.Confirmation()
-
-        if (description['category'] == 'dock_to_48v_charger'):
-            print('accepting dock_to_48v_charger')
-            confirm.accept()
-
+        confirm.accept()
         return confirm
-    fleet.add_performable_action('dock_to_48v_charger', _consider)
 
-    # if task_request_check is None:
-    #     # Naively accept all delivery requests
-    #     fleet.accept_task_requests(lambda x: True)
-    # else:
-    #     fleet.accept_task_requests(task_request_check)
+    # TODO(AA): To check if the MiR fleet supports these missions names, before
+    # confirming.
+    # Configure this fleet to perform action category
+    if 'action_categories' in task_capabilities_config:
+        for cat in task_capabilities_config['action_categories']:
+            print(f"Fleet [{fleet_name}] is configured to perform action of category [{cat}]")
+            fleet.add_performable_action(cat, _consider)
 
     return adapter, fleet, fleet_name, robot_traits, nav_graph
 
@@ -174,9 +182,8 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
                 node=handle_data['node'],
                 rmf_graph=handle_data['graph'],
                 robot_traits=handle_data['robot_traits'],
-                robot_state_update_frequency=rmf_config.get(
-                'robot_state_update_frequency', 1),
-            dry_run=dry_run
+                robot_state_update_frequency=rmf_config.get('robot_state_update_frequency', 1),
+                dry_run=dry_run
         )
         robot.mir_api =  MirAPI(prefix,headers)
         robot.transforms = handle_data['transforms']
@@ -248,7 +255,7 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
 ###############################################################################
 # MAIN
 ###############################################################################
-def main(argv=sys.argv, task_request_check=None, mock=False):
+def main(argv=sys.argv):
 
     # INIT RCL ================================================================
     rclpy.init(args=argv)
@@ -292,8 +299,8 @@ def main(argv=sys.argv, task_request_check=None, mock=False):
     print()
 
     # INIT FLEET ==============================================================
-    adapter, fleet, fleet_name, robot_traits, nav_graph = create_fleet(config,nav_graph_path,task_request_check=task_request_check,
-                                                                  mock=mock)
+    adapter, fleet, fleet_name, robot_traits, nav_graph = create_fleet(
+        config,nav_graph_path, mock=mock)
 
     # INIT TRANSFORMS =========================================================
     rmf_coordinates = config['reference_coordinates']['rmf']
@@ -363,14 +370,4 @@ def main(argv=sys.argv, task_request_check=None, mock=False):
 
 
 if __name__ == "__main__":
-    # Configure task condition ============================================
-    # Return True if the loop task request should be honoured
-    # False otherwise
-    def task_request_check(msg: TaskProfile):
-        if (msg.description.task_type == TaskType.TYPE_LOOP):
-            return True
-        else:
-            return False
-
-    main(sys.argv,
-           task_request_check=task_request_check)
+    main(sys.argv)
