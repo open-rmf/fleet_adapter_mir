@@ -230,12 +230,13 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
             )
         assert starts, ("Robot %s can't be placed on the nav graph!"
                         % robot_name)
+        assert len(starts) != 0, (f'No StartSet found for robot: {robot_name}')
 
         # Insert start data into robot
         start = starts[0]
 
         if start.lane is not None:  # If the robot is in a lane
-            robot.rmf_current_lane_index = start.lane.value
+            robot.rmf_current_lane_index = start.lane
             robot.rmf_current_waypoint_index = None
             robot.rmf_target_waypoint_index = None
         else:  # Otherwise, the robot is on a waypoint
