@@ -201,8 +201,15 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
             # that this adapter will use repeatedly with varying parameters.
             variable_move_mission = mir_config['variable_move_mission']
             assert variable_move_mission in robot.mir_missions, \
-                (f'Variable move mission [{variable_move_mission}] not yet defined in mir_config')
+                (f'Variable move mission [{variable_move_mission}] not yet defined as a mission in MiR fleet')
             robot.mir_variable_move_mission = variable_move_mission
+
+            if 'dock_and_charge_mission' in mir_config:
+                dock_and_charge_mission = mir_config['dock_and_charge_mission']
+                assert dock_and_charge_mission in robot.mir_missions, \
+                (f'Dock and charge mission [{dock_and_charge_mission}] not yet defined as a mission in MiR fleet')
+                robot.mir_dock_and_charge_mission = dock_and_charge_mission
+
         else:
             robot.mir_name = "DUMMY_ROBOT_FOR_DRY_RUN"
 
