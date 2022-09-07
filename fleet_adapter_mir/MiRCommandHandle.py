@@ -576,7 +576,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             self.action_check_task_completion = _check_task_completion
 
             # Keep track of perform action
-            self.node.get_logger().warn(f"Robot [{self.name}] starts [{category}] action")
+            self.node.get_logger().info(f"Robot [{self.name}] starts [{category}] action")
             self.action_category = category
             self.action_description = description
             self.action_start_time = self.node.get_clock().now()
