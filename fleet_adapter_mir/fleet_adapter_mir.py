@@ -197,12 +197,12 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
             robot.load_mir_missions()
             robot.load_mir_positions()
 
-            # Check that the MiR fleet has defined the variable move mission,
+            # Check that the MiR fleet has defined the RMF move mission,
             # that this adapter will use repeatedly with varying parameters.
-            variable_move_mission = mir_config['variable_move_mission']
-            assert variable_move_mission in robot.mir_missions, \
-                (f'Variable move mission [{variable_move_mission}] not yet defined as a mission in MiR fleet')
-            robot.mir_variable_move_mission = variable_move_mission
+            rmf_move_mission = mir_config['rmf_move_mission']
+            assert rmf_move_mission in robot.mir_missions, \
+                (f'RMF move mission [{rmf_move_mission}] not yet defined as a mission in MiR fleet')
+            robot.mir_rmf_move_mission = rmf_move_mission
 
             if 'dock_and_charge_mission' in mir_config:
                 dock_and_charge_mission = mir_config['dock_and_charge_mission']

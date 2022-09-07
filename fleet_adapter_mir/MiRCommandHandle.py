@@ -145,7 +145,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.mir_positions = {}  # MiR Place Name-GUID Dict
         self.mir_api = None  # MiR REST API
         self.mir_state = MiRState.PAUSE
-        self.mir_variable_move_mission = None
+        self.mir_rmf_move_mission = None
         self.mir_dock_and_charge_mission = None
 
         # Thread Management ===================================================
@@ -438,7 +438,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
                         self.mir_state = None
 
-                        self.queue_variable_move_coordinate_mission(mir_location)
+                        self.queue_rmf_move_coordinate_mission(mir_location)
                         self.execute_updates()
 
                         # DEBUGGING
@@ -662,11 +662,11 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
     ##########################################################################
     # MISSION METHODS
     ##########################################################################
-    def queue_variable_move_coordinate_mission(self, mir_location):
-        variable_move_mission_guid = \
-            self.mir_missions[self.mir_variable_move_mission]['guid']
+    def queue_rmf_move_coordinate_mission(self, mir_location):
+        rmf_move_mission_guid = \
+            self.mir_missions[self.mir_rmf_move_mission]['guid']
         mission = {
-            'mission_id': variable_move_mission_guid,
+            'mission_id': rmf_move_mission_guid,
             'parameters': [
                 {'id': 'x', 'value': mir_location.x, 'label': f'{mir_location.x:.3f}'},
                 {'id': 'y', 'value': mir_location.y, 'label': f'{mir_location.y:.3f}'},
@@ -676,10 +676,10 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             "description": "variable move mission to be called by open-rmf"
         }
         try:
-            response = self.mir_api.mission_queue_post(variable_move_mission_guid, mission)
+            response = self.mir_api.mission_queue_post(rmf_move_mission_guid, mission)
         except Exception:
             self.node.get_logger().error(
-                '{self.name}: Failed to call variable move mission to '
+                '{self.name}: Failed to call rmf_move_mission to '
                 '[{mir_location.x:3f}_{mir_location.y:.3f}]!'
             )
 
