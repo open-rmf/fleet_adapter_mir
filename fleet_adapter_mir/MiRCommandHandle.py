@@ -3,6 +3,7 @@ from rmf_fleet_msgs.msg import Location, RobotMode, RobotState
 import rmf_adapter as adpt
 
 from collections import namedtuple
+from typing import Any
 import threading
 import urllib3
 import copy
@@ -12,6 +13,7 @@ import argparse
 import json
 
 from datetime import timedelta
+from dataclasses import dataclass
 
 __all__ = [
     "MiRLocation",
@@ -47,6 +49,14 @@ class MiRPositionTypes(enum.IntEnum):
 ###############################################################################
 # CLASSES
 ###############################################################################
+@dataclass
+class Action:
+    category: str
+    description: str
+    start_time: int
+    execution: Any
+    check_task_completion: Any
+
 
 class MiRCommandHandle(adpt.RobotCommandHandle):
     def __init__(self,
@@ -133,11 +143,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.rmf_path_requested = False
 
         # RMF perform action===================================================
-        self.action_category = None
-        self.action_description = None
-        self.action_start_time = None
-        self.action_execution = None
-        self.action_check_task_completion = None
+        self.action = None
 
         # MiR Variables =======================================================
         self.mir_name = ""  # Name of robot on MiR REST server
@@ -569,43 +575,39 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             response = self.mir_api.mission_queue_post(mission_guid)
             mission_queue_id = response['id']
 
-            # Load self.action_check_task_completion
             def _check_task_completion():
                 mission_status = self.mir_api.mission_queue_id_get(mission_queue_id)
                 if 'finished' in mission_status and mission_status['finished'] is not None:
                     return True
                 return False
-            self.action_check_task_completion = _check_task_completion
 
             # Keep track of perform action
+            self.action = Action(
+                category,
+                description,
+                self.node.get_clock().now(),
+                execution,
+                _check_task_completion)
             self.node.get_logger().info(f"Robot [{self.name}] starts [{category}] action")
-            self.action_category = category
-            self.action_description = description
-            self.action_start_time = self.node.get_clock().now()
-            self.action_execution = execution
 
     def check_perform_action(self):
-        self.node.get_logger().info(f'Executing perform action: {self.action_category}')
-        action_ok = self.action_execution.okay()
-        if self.action_check_task_completion() or not action_ok:
+        self.node.get_logger().info(f'Executing perform action: {self.action.category}')
+        action_ok = self.action.execution.okay()
+        if self.action.check_task_completion() or not action_ok:
             if action_ok:
                 self.node.get_logger().info(
-                    f"action [{self.action_category}] is completed")
-                self.action_execution.finished()
+                    f"action [{self.action.category}] is completed")
+                self.action.execution.finished()
             else:
                 self.node.get_logger().warn(
-                    f"action [{self.action_category}] is killed/canceled")
-            self.action_execution = None
-            self.action_category = None
-            self.action_description = None
-            self.action_start_time = None
-            self.action_check_task_completion = None
+                    f"action [{self.action.category}] is killed/canceled")
+            self.action = None
             return
 
         # Still executing perform action
         # TODO(AA): Update accurate remaining time
-        self.action_execution.update_remaining_time(timedelta(seconds=10.0))
-        # TODO(AA): Update self.action_execution state
+        self.action.execution.update_remaining_time(timedelta(seconds=10.0))
+        # TODO(AA): Update self.action.execution state
 
     ##########################################################################
     # INIT METHODS
@@ -1009,7 +1011,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.update_internal_location_trackers()
         self.update_position(api_response=api_response)
 
-        if (self.action_execution):
+        if (self.action):
             self.check_perform_action()
 
         self.state_update_timer.reset()
