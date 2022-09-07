@@ -471,7 +471,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 if not self.dry_run:
                     api_response = self.mir_api.status_get()
                     self.rmf_docking_executed = (
-                        'docking' in api_response.mission_text.lower())
+                        'docking' in api_response['mission_text'].lower())
                 else:
                     api_response = None
                     self.rmf_docking_executed = False
@@ -481,7 +481,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 # Docking completed
                 if not self.dry_run:
                     if (self.rmf_docking_executed
-                            and api_response.state_id == MiRState.READY):
+                            and api_response['state_id'] == MiRState.READY):
                         self.rmf_docking_requested = False
                         docking_finished_callback()
 
@@ -670,11 +670,15 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
         mission = {
             # mir const, retrieved with GET /mission_groups
-            "group_id":"mirconst-guid-0000-0001-missiongroup",
             "name":mission_name,
+            "group_id":"mirconst-guid-0000-0001-missiongroup",
             "description":"automatically created by mir fleet handler",
         }
-        response = self.mir_api.missions_post(mission)
+        response = self.mir_api.missions_post(json.dumps(mission))
+        self.node.get_logger().info(
+            f'{self.name}: '
+            f'dock mission [{mission_name}] response: {response}'
+        )
 
         action = {
             "action_type":"docking",
@@ -685,7 +689,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             "priority":1
         }
         self.mir_api.missions_mission_id_actions_post(
-            mission_id=response.guid,
+            mission_id=response["guid"],
             body=action
         )
 
@@ -712,8 +716,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 else:
                     return [0.0, 0.0, 0.0]
 
-        mir_pos = [api_response.position.x, api_response.position.y]
-        mir_ori = api_response.position.orientation
+        mir_pos = [api_response['position']['x'], api_response['position']['y']]
+        mir_ori = api_response['position']['orientation']
 
         # Output is [x, y, yaw]
         if rmf:
