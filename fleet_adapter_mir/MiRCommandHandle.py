@@ -953,34 +953,3 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
     def get_map_name(self, graph_index):
         self.node.get_logger().info(str(self.rmf_graph.get_waypoint(graph_index)))
         return self.rmf_graph.get_waypoint(graph_index).map_name
-
-###############################################################################
-# HELPER FUNCTIONS AND CLASSES
-###############################################################################
-# class MiRRetryContext():
-#     """Context to prevent race conditions during robot startup."""
-#     def __init__(self, robot):
-#         self.robot = robot
-#         self.connection_pool_kw = (
-#             self.robot
-#             .mir_api
-#             .api_client
-#             .rest_client
-#             .pool_manager
-#             .connection_pool_kw
-#         )
-#         self.orig_retries = self.connection_pool_kw.get('retries')
-
-#     def __enter__(self):
-#         retries = urllib3.Retry(10)
-#         retries.backoff_factor = 1
-#         retries.status_forcelist = (404,)
-#         self.connection_pool_kw['retries'] = retries
-
-#         return self.robot
-
-#     def __exit__(self, exc_type, exc_value, exc_traceback):
-#         if self.orig_retries is not None:
-#             self.connection_pool_kw['retries'] = self.orig_retries
-#         else:
-#             del self.connection_pool_kw['retries']
