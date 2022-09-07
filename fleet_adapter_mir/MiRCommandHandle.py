@@ -599,7 +599,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             self.action_category = None
             self.action_description = None
             self.action_start_time = None
-            self.action_check_task_completion
+            self.action_check_task_completion = None
             return
 
         # Still executing perform action
