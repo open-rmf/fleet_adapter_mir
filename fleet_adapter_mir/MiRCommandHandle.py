@@ -284,9 +284,6 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             while ((self.rmf_remaining_path_waypoints or self.paused)
                     or _current_waypoint):
 
-                # DEBUG PRINTOUT
-                # print([str(x[1].graph_index) for x in self.rmf_remaining_path_waypoints])
-
                 if not self.paused:  # Skipped if paused
                     if _current_waypoint is None:
                         _, _current_waypoint = (
@@ -295,10 +292,6 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                         self.rmf_path_requested = True
 
                     waypoint_leave_msg = _current_waypoint.time
-                    #ros_waypoint_leave_time = (
-                    #    waypoint_leave_msg.sec
-                    #    + waypoint_leave_msg.nanosec / 1e9
-                    #)
                     ros_waypoint_leave_time = waypoint_leave_msg
 
                     ros_now = self.node.get_clock().now().nanoseconds / 1e9
