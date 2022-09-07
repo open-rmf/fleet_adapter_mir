@@ -560,7 +560,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 if m['name'] == category:
                     mission_guid = m['guid']
             if mission_guid is None:
-                self.node.get_logger().error(f'Action category {category} not supported, ignoring')
+                error_str = f'Action category {category} not supported, ignoring'
+                self.node.get_logger().error(error_str)
+                execution.error(error_str)
                 return
 
             # Start mission
