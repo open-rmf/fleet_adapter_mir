@@ -1,7 +1,7 @@
 # fleet_adapter_mir
 MiR100 Fleet Adapter using the https://github.com/open-rmf/rmf_ros2/tree/main/rmf_fleet_adapter_python
 
- 
+
 
 ## Pre-Requisites
 
@@ -12,11 +12,18 @@ MiR100 Fleet Adapter using the https://github.com/open-rmf/rmf_ros2/tree/main/rm
 
 ## Installation
 
-If a source build of `open-rmf` is used, source the built workspace as an underlay, and clone the repository.
+If a source build of `open-rmf` is used, source the built workspace as an underlay, and build a new workspace with this repository.
 
 ```bash
+# Create the MiR workspace and clone the repository
+mkdir -p ~/mir_ws/src
+cd ~/mir_ws/src
+git clone https://github.com/osrf/fleet_adapter_mir
+
+# Source the Open-RMF underlay workspace and build
 source ~/rmf_ws/install/setup.bash
-git clone https://github.com/osrf/fleet_adapter_mir ~/fleet_adapter_mir
+cd ~/mir_ws
+colcon build
 ```
 
 
@@ -35,24 +42,26 @@ In effect, it interfaces the MiR REST API with `open-rmf`, all without needing t
 
 ### Example Entry Point
 
-An example usage of the implemented adapter can be found in the `main.py` file. It takes in a configuration file, sets everything up, and spins up the fleet adapter.
+An example usage of the implemented adapter can be found in the `fleet_adapter_mir/fleet_adapter_mir.py` file. It takes in a configuration file and navigation graph, sets everything up, and spins up the fleet adapter.
 
 Call it like so:
 
 ```bash
-# Remember to source the underlay workspace!
+# Source the workspace
+source ~/mir_ws/install/setup.bash
 
 # Get help
-python3 main.py -h
+ros2 run fleet_adapter_mir fleet_adapter_mir -h
 
 # Run in dry-run mode. Disables ROS 2 publishing and MiR REST calls
-python3 main.py -c mir_config.yaml -n nav_graph.yaml -d
+cd ~/mir_ws/src/fleet_adapter_mir/configs
+ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yaml -d
 ```
 
 Alternatively, if you want to run everything with full capabilities, (though note that it will require an `rmf_traffic_ros2` schedule node to be active, and the MiR REST server to be available)
 
 ```bash
-python3 main.py -c mir_config.yaml -n nav_graph.yaml
+ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yaml
 ```
 
 
@@ -86,7 +95,7 @@ Task IDs are kept as a monotonically increasing integer, with each robot having 
 
 `FleetState` publishing is done manually and not under the purview of the individual robot command handle instances. Each robot handle will internally update its corresponding `RobotState` message, so it is fairly trivial to aggregate them all into a `FleetState` message externally.
 
-The example script `main.py` does this.
+The example script `fleet_adapter_mir/fleet_adapter_mir.py` does this.
 
 
 
@@ -204,13 +213,13 @@ Additionally, any extra notes will be included after a --- in the description bo
 >
 > The states are characterised **ONLY** by the `RobotMode` and the status of the three tracking variables (which will be `None` or some `int`) and the `rmf_path_requested` variable (which will be `True` or `False`).
 >
-> 
+>
 >
 > **Robot Modes**
 >
 > Robot modes will change independently as the command handle keeps running its internal `update_internal_robot_state()` update method. We only need to keep track of how our states are changing and adjust the internal trackers accordingly.
 >
-> 
+>
 >
 > **Paused States**
 >

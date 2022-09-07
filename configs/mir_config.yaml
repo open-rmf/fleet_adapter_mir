@@ -1,7 +1,3 @@
-# MAP CONFIG ===================================================================
-# Path to nav graph yaml
-map_path: nav_graph.yaml
-
 # ROBOT CONFIG =================================================================
 # To init MiR robot REST APIs and RMF states
 
