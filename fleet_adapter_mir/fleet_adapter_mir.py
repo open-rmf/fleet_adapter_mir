@@ -122,6 +122,18 @@ def create_fleet(config,nav_graph_path, mock):
     drain_battery = config['rmf_fleet']['account_for_battery_drain']
     recharge_threshold = config['rmf_fleet']['recharge_threshold']
     recharge_soc = config['rmf_fleet']['recharge_soc']
+    finishing_request = config['rmf_fleet']['task_capabilities']['finishing_request']
+    # Set task planner params
+    ok = fleet.set_task_planner_params(
+        battery_sys,
+        motion_sink,
+        ambient_sink,
+        tool_sink,
+        recharge_threshold,
+        recharge_soc,
+        drain_battery,
+        finishing_request)
+    assert ok, ("Unable to set task planner params")
 
     task_capabilities_config = config['rmf_fleet']['task_capabilities']
     finishing_request = task_capabilities_config['finishing_request']
