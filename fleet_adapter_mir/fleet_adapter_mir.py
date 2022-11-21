@@ -71,7 +71,7 @@ def compute_transforms(rmf_coordinates, mir_coordinates, node=None):
     return transforms
 
 
-def create_fleet(config,nav_graph_path,task_request_check, mock):
+def create_fleet(config,nav_graph_path, mock):
     """Create RMF Adapter, FleetUpdateHandle, and parse navgraph."""
     profile = traits.Profile(
         geometry.make_final_convex_circle(config['rmf_fleet']['profile']['footprint']),
@@ -135,11 +135,43 @@ def create_fleet(config,nav_graph_path,task_request_check, mock):
         finishing_request)
     assert ok, ("Unable to set task planner params")
 
-    if task_request_check is None:
-        # Naively accept all delivery requests
-        fleet.accept_task_requests(lambda x: True)
-    else:
-        fleet.accept_task_requests(task_request_check)
+    task_capabilities_config = config['rmf_fleet']['task_capabilities']
+    finishing_request = task_capabilities_config['finishing_request']
+    # Set task planner params
+    ok = fleet.set_task_planner_params(
+        battery_sys,
+        motion_sink,
+        ambient_sink,
+        tool_sink,
+        recharge_threshold,
+        recharge_soc,
+        drain_battery,
+        finishing_request)
+    assert ok, ("Unable to set task planner params")
+
+    # Accept Standard RMF Task which are defined in config.yaml
+    always_accept = adpt.fleet_update_handle.Confirmation()
+    always_accept.accept()
+    if task_capabilities_config['loop']:
+        print(f"Fleet [{fleet_name}] is configured to perform Loop tasks")
+        fleet.consider_patrol_requests(lambda desc: always_accept)
+    if task_capabilities_config['delivery']:
+        print(f"Fleet [{fleet_name}] is configured to perform Delivery tasks")
+        fleet.consider_delivery_requests(lambda desc: always_accept)
+
+    # Whether to accept custom RMF action tasks
+    def _consider(description: dict):
+        confirm = adpt.fleet_update_handle.Confirmation()
+        confirm.accept()
+        return confirm
+
+    # TODO(AA): To check if the MiR fleet supports these missions names, before
+    # confirming.
+    # Configure this fleet to perform action category
+    if 'action_categories' in task_capabilities_config:
+        for cat in task_capabilities_config['action_categories']:
+            print(f"Fleet [{fleet_name}] is configured to perform action of category [{cat}]")
+            fleet.add_performable_action(cat, _consider)
 
     return adapter, fleet, fleet_name, robot_traits, nav_graph
 
@@ -162,9 +194,8 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
                 node=handle_data['node'],
                 rmf_graph=handle_data['graph'],
                 robot_traits=handle_data['robot_traits'],
-                robot_state_update_frequency=rmf_config.get(
-                'robot_state_update_frequency', 1),
-            dry_run=dry_run
+                robot_state_update_frequency=rmf_config.get('robot_state_update_frequency', 1),
+                dry_run=dry_run
         )
         robot.mir_api =  MirAPI(prefix,headers)
         robot.transforms = handle_data['transforms']
@@ -177,6 +208,20 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
 
             robot.load_mir_missions()
             robot.load_mir_positions()
+
+            # Check that the MiR fleet has defined the RMF move mission,
+            # that this adapter will use repeatedly with varying parameters.
+            rmf_move_mission = mir_config['rmf_move_mission']
+            assert rmf_move_mission in robot.mir_missions, \
+                (f'RMF move mission [{rmf_move_mission}] not yet defined as a mission in MiR fleet')
+            robot.mir_rmf_move_mission = rmf_move_mission
+
+            if 'dock_and_charge_mission' in mir_config:
+                dock_and_charge_mission = mir_config['dock_and_charge_mission']
+                assert dock_and_charge_mission in robot.mir_missions, \
+                (f'Dock and charge mission [{dock_and_charge_mission}] not yet defined as a mission in MiR fleet')
+                robot.mir_dock_and_charge_mission = dock_and_charge_mission
+
         else:
             robot.mir_name = "DUMMY_ROBOT_FOR_DRY_RUN"
 
@@ -204,12 +249,13 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
             )
         assert starts, ("Robot %s can't be placed on the nav graph!"
                         % robot_name)
+        assert len(starts) != 0, (f'No StartSet found for robot: {robot_name}')
 
         # Insert start data into robot
         start = starts[0]
 
         if start.lane is not None:  # If the robot is in a lane
-            robot.rmf_current_lane_index = start.lane.value
+            robot.rmf_current_lane_index = start.lane
             robot.rmf_current_waypoint_index = None
             robot.rmf_target_waypoint_index = None
         else:  # Otherwise, the robot is on a waypoint
@@ -220,18 +266,12 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
         print("MAP_NAME:", start_config['map_name'])
         robot.rmf_map_name = start_config['map_name']
 
-        # INSERT UPDATER ======================================================
-        def updater_inserter(handle_obj, rmf_updater):
-            """Insert a RobotUpdateHandle."""
-            handle_obj.rmf_updater = rmf_updater
-
         handle_data['fleet_handle'].add_robot(
             robot,
             robot.name,
             handle_data['robot_traits'].profile,
             starts,
-            partial(updater_inserter, robot)
-        )
+            lambda rmf_updater: robot.init_updater(rmf_updater))
 
         handle_data['node'].get_logger().info(
             f"successfully initialized robot {robot.name}"
@@ -242,7 +282,7 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
 ###############################################################################
 # MAIN
 ###############################################################################
-def main(argv=sys.argv, task_request_check=None, mock=False):
+def main(argv=sys.argv):
 
     # INIT RCL ================================================================
     rclpy.init(args=argv)
@@ -286,8 +326,8 @@ def main(argv=sys.argv, task_request_check=None, mock=False):
     print()
 
     # INIT FLEET ==============================================================
-    adapter, fleet, fleet_name, robot_traits, nav_graph = create_fleet(config,nav_graph_path,task_request_check=task_request_check,
-                                                                  mock=mock)
+    adapter, fleet, fleet_name, robot_traits, nav_graph = create_fleet(
+        config,nav_graph_path, mock=mock)
 
     # INIT TRANSFORMS =========================================================
     rmf_coordinates = config['reference_coordinates']['rmf']
@@ -357,14 +397,4 @@ def main(argv=sys.argv, task_request_check=None, mock=False):
 
 
 if __name__ == "__main__":
-    # Configure task condition ============================================
-    # Return True if the loop task request should be honoured
-    # False otherwise
-    def task_request_check(msg: TaskProfile):
-        if (msg.description.task_type == TaskType.TYPE_LOOP):
-            return True
-        else:
-            return False
-
-    main(sys.argv,
-           task_request_check=task_request_check)
+    main(sys.argv)
