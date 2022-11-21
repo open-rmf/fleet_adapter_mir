@@ -11,9 +11,11 @@ robots:
   # So for now, this name is the name used in the script only.
   my_test_robot:
     mir_config:
-      base_url: "http://some_url"
-      user: "some_user"
-      password: "some_password"
+      base_url: "http://some.ip.address/api/v2.0.0/"
+      user: "application/json"
+      password: "Basic HASH_OF_PASSWORD_OBTAINED_AT_API_DOCUMENTATION_PAGE"
+      rmf_move_mission: "rmf_default_move_mission" # This mission must be predefined
+      dock_and_charge_mission: "dock_to_charger" # This mission must be predefined
 
     rmf_config:
       robot_state_update_frequency: 1
@@ -96,4 +98,4 @@ rmf_fleet:
     delivery: False
     clean: False
     finishing_request: "nothing" # [park, charge, nothing]
-    action_categories: ["dock_to_charger", "custom_mission_1"]
+    action_categories: ["custom_mission_1"]

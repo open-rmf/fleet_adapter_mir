@@ -151,6 +151,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.mir_positions = {}  # MiR Place Name-GUID Dict
         self.mir_api = None  # MiR REST API
         self.mir_state = MiRState.PAUSE
+        self.mir_rmf_move_mission = None
+        self.mir_dock_and_charge_mission = None
 
         # Thread Management ===================================================
         # Path queue execution thread
@@ -302,6 +304,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             while ((self.rmf_remaining_path_waypoints or self.paused)
                     or _current_waypoint):
 
+                # DEBUG PRINTOUT
+                # print([str(x[1].graph_index) for x in self.rmf_remaining_path_waypoints])
+                next_mission_wait = 0
                 if not self.paused:  # Skipped if paused
                     if _current_waypoint is None:
                         _, _current_waypoint = (
@@ -411,12 +416,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                                 _next_waypoint.position[1]
                             ]
                         )
-                        _mir_ori_rad = (
-                            math.radians(_next_waypoint.position[2] % 360)
-                            + self.transforms['rmf_to_mir'].get_rotation()
-                        )
-
-                        # NOTE(CH3): MiR Location is sent in Degrees
+                        _mir_ori_rad = \
+                            _next_waypoint.position[2] - self.transforms['rmf_to_mir'].get_rotation()
                         _mir_ori = math.degrees(_mir_ori_rad % (2 * math.pi))
 
                         if _mir_ori > 180.0:
@@ -431,14 +432,15 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                         )
 
                         print(f"RMF location x:{_next_waypoint.position[0]}"
-                            f"y:{_next_waypoint.position[1]}")
+                            f"y:{_next_waypoint.position[1]} "
+                            f'yaw:{_next_waypoint.position[2]}')
                         print(f'MiR location: {mir_location}')
 
                         print(f"RMF Index: {_next_waypoint.graph_index}")
 
                         self.mir_state = None
 
-                        self.queue_move_coordinate_mission(mir_location)
+                        self.queue_rmf_move_coordinate_mission(mir_location)
                         self.execute_updates()
 
                         # DEBUGGING
@@ -482,7 +484,10 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
         def dock_closure():
             if not self.dry_run:
-                self.queue_dock_mission(dock_name)
+                response = self.queue_dock_and_charge_mission()
+                if response is None:
+                    self.rmf_docking_requested = False
+                    self.rmf_docking_executed = False
 
             # Check for docking complete!
             while self.rmf_docking_requested:
@@ -657,122 +662,41 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
     ##########################################################################
     # MISSION METHODS
     ##########################################################################
-    def queue_move_coordinate_mission(self, mir_location):
-        """Add a move mission to the mission queue, creating when needed."""
-        mission_name = ('move_coordinate_to'
-                        f'_{mir_location.x:.3f}'
-                        f'_{mir_location.y:.3f}'
-                        f'_{mir_location.yaw:.3f}')
-
-        # Get mission GUID. If missing, create one and save it.
-        mission_id = self.mir_missions.get(
-            mission_name, self.create_move_coordinate_mission(mir_location)
-        )
-
-        # Queue mission
+    def queue_rmf_move_coordinate_mission(self, mir_location):
+        rmf_move_mission_guid = \
+            self.mir_missions[self.mir_rmf_move_mission]['guid']
+        mission = {
+            'mission_id': rmf_move_mission_guid,
+            'parameters': [
+                {'id': 'x', 'value': mir_location.x, 'label': f'{mir_location.x:.3f}'},
+                {'id': 'y', 'value': mir_location.y, 'label': f'{mir_location.y:.3f}'},
+                {'id': 'yaw', 'value': mir_location.yaw, 'label': f'{mir_location.yaw:.3f}'}
+            ],
+            "priority": 0,
+            "description": "variable move mission to be called by open-rmf"
+        }
         try:
-            mission = mission_id
-            response = self.mir_api.mission_queue_post(mission)
-            self.node.get_logger().info(f'mission_queue_post info: {response}')
+            response = self.mir_api.mission_queue_post(rmf_move_mission_guid, mission)
         except Exception:
             self.node.get_logger().error(
-                '{self.name}: No mission to move coordinates to '
+                '{self.name}: Failed to call rmf_move_mission to '
                 '[{mir_location.x:3f}_{mir_location.y:.3f}]!'
             )
 
+    def queue_dock_and_charge_mission(self):
+        if self.mir_dock_and_charge_mission is None:
+            self.node.get_logger().error('No dock and charge mission defined in MiR config.')
+            return
 
-    def create_move_coordinate_mission(self, mir_location, retries=10):
-        mission_name = ('move_coordinate_to'
-                        f'_{mir_location.x:.3f}'
-                        f'_{mir_location.y:.3f}'
-                        f'_{mir_location.yaw:.3f}')
-
-        mission = {
-            "name": mission_name,
-            "group_id": "mirconst-guid-0000-0001-missiongroup",
-            "description": "automatically created by mir fleet adapter"
-            }
-        response = self.mir_api.missions_post(json.dumps(mission))
-
-        action = {
-            "action_type": "move_to_position",
-            "mission_id": response['guid'],
-            "priority": 1,
-            "parameters":[
-                {"id": "x", "value": mir_location.x},
-                {"id": "y", "value": mir_location.y},
-                {"id": "orientation", "value": mir_location.yaw},
-                {"id": "retries", "value": retries},
-                {"id": "distance_threshold", "value": 0.1}
-            ]
-        }
-
-        self.mir_api.missions_mission_id_actions_post(
-            mission_id=response['guid'],
-            body=action
-        )
-        self.node.get_logger().info(
-            f'{self.name}: '
-            f'Created mission to move coordinate to "{mir_location}"'
-        )
-
-         #NOTE(CH3): Unsure if I should be doing this
-        self.mir_missions[mission_name] = response['guid']
-        return response['guid']
-
-    def queue_dock_mission(self, dock_name):
-        """Add a dock mission to the mission queue, creating when needed."""
-        mission_name = f'dock_to_{dock_name}'
-
-        # Get mission GUID. If missing, create one and save it.
-        mission_id = self.mir_missions.get(mission_name,
-                                       self.create_dock_mission(dock_name))
-        # Queue mission
+        dock_and_charge_mission_guid = \
+            self.mir_missions[self.mir_dock_and_charge_mission]['guid']
         try:
-            mission = mission_id
-            self.mir_api.mission_queue_post(mission)
-        except KeyError:
+            response = self.mir_api.mission_queue_post(dock_and_charge_mission_guid)
+        except Exception:
             self.node.get_logger().error(
-                f'{self.name}: No mission to dock to {dock_name}!'
+                f'{self.name}: Failed to call dock and charge mission '
+                f'{self.mir_dock_and_charge_mission}'
             )
-
-    def create_dock_mission(self, dock_name):
-        """Create, POST, and populate MiR docking mission, then save it."""
-        mission_name = f'dock_to_{dock_name}'
-
-        mission = {
-            # mir const, retrieved with GET /mission_groups
-            "name":mission_name,
-            "group_id":"mirconst-guid-0000-0001-missiongroup",
-            "description":"automatically created by mir fleet handler",
-        }
-        response = self.mir_api.missions_post(json.dumps(mission))
-        self.node.get_logger().info(
-            f'{self.name}: '
-            f'dock mission [{mission_name}] response: {response}'
-        )
-
-        action = {
-            "action_type":"docking",
-            "mission_id":response["guid"],
-            "parameters":[
-                {"id": "marker", "value": dock_name}
-            ],
-            "priority":1
-        }
-        self.mir_api.missions_mission_id_actions_post(
-            mission_id=response["guid"],
-            body=action
-        )
-
-        self.node.get_logger().info(
-            f'created mission to move and dock to: "{dock_name}"'
-        )
-
-        #NOTE(CH3): Unsure if I should be doing this
-        self.mir_missions[mission_name] = response['guid']
-
-        return response['guid']
 
     ##########################################################################
     # RMF CORE INTERACTION METHODS

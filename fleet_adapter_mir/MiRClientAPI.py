@@ -74,10 +74,16 @@ class MirAPI:
         except Exception as err:
             print(f"Other here error: {err}")
 
-    def mission_queue_post(self, mission_id):
+    def mission_queue_post(self, mission_id, full_mission_description=None):
         if not self.connected:
             return
-        data = {"mission_id": mission_id}
+        data = {'mission_id': mission_id}
+        if full_mission_description is not None:
+            data = full_mission_description
+            if mission_id != full_mission_description['mission_id']:
+                print(f'Inconsistent mission id, provided [{mission_id}], full_mission_description: [{full_mission_description}]')
+                return
+
         try:
             response = requests.post(self.prefix + 'mission_queue' , headers = self.headers, data=json.dumps(data), timeout = self.timeout)
             if self.debug:

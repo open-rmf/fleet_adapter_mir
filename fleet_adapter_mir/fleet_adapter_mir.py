@@ -208,6 +208,20 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
 
             robot.load_mir_missions()
             robot.load_mir_positions()
+
+            # Check that the MiR fleet has defined the RMF move mission,
+            # that this adapter will use repeatedly with varying parameters.
+            rmf_move_mission = mir_config['rmf_move_mission']
+            assert rmf_move_mission in robot.mir_missions, \
+                (f'RMF move mission [{rmf_move_mission}] not yet defined as a mission in MiR fleet')
+            robot.mir_rmf_move_mission = rmf_move_mission
+
+            if 'dock_and_charge_mission' in mir_config:
+                dock_and_charge_mission = mir_config['dock_and_charge_mission']
+                assert dock_and_charge_mission in robot.mir_missions, \
+                (f'Dock and charge mission [{dock_and_charge_mission}] not yet defined as a mission in MiR fleet')
+                robot.mir_dock_and_charge_mission = dock_and_charge_mission
+
         else:
             robot.mir_name = "DUMMY_ROBOT_FOR_DRY_RUN"
 
@@ -235,12 +249,13 @@ def create_robot_command_handles(config, handle_data, dry_run=False):
             )
         assert starts, ("Robot %s can't be placed on the nav graph!"
                         % robot_name)
+        assert len(starts) != 0, (f'No StartSet found for robot: {robot_name}')
 
         # Insert start data into robot
         start = starts[0]
 
         if start.lane is not None:  # If the robot is in a lane
-            robot.rmf_current_lane_index = start.lane.value
+            robot.rmf_current_lane_index = start.lane
             robot.rmf_current_waypoint_index = None
             robot.rmf_target_waypoint_index = None
         else:  # Otherwise, the robot is on a waypoint
