@@ -157,7 +157,7 @@ def create_fleet(config,nav_graph_path, mock):
         fleet.consider_patrol_requests(lambda desc: always_accept)
     if task_capabilities_config['delivery']:
         print(f"Fleet [{fleet_name}] is configured to perform Delivery tasks")
-        fleet.consider_delivery_requests(lambda desc: always_accept)
+        fleet.consider_delivery_requests(lambda desc: always_accept, lambda desc: always_accept)
 
     # Whether to accept custom RMF action tasks
     def _consider(description: dict):
