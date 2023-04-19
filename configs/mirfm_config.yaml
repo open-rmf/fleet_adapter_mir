@@ -1,0 +1,85 @@
+# ROBOT CONFIG =================================================================
+# To init MiR robot REST APIs and RMF states
+
+mirfm:
+  base_url: 'http://some.ip.address/api/v2.0.0'
+  username: some_username
+  password: some_password
+  robot_state_update_frequency: 1
+  max_merge_waypoint_distance: 1.0
+  max_merge_lane_distance: 1.0
+  # mapping between mir map names and rmf map names
+  maps:
+    L1: 1F
+    L2: 2F
+  # force RMF missions to be re-created if they already exist.
+  # force_create_missions: true
+
+
+# NODE CONFIG ==================================================================
+# To init the ROS2 node names used in the script
+
+node_names:
+  robot_command_handle: "rmf_mir_fleet_command_handler"
+  fleet_state_publisher: "rmf_mir_fleet_state_publisher"
+  rmf_fleet_adapter: "MirFleetAdapter"
+
+
+# TRANSFORM CONFIG =============================================================
+# For computing transforms between MiR and RMF coordinate systems
+#
+# NOTE(CH3): I am assuming that the transform is the same across maps
+# Otherwise... Future me or future someone else, PLEASE KEY THIS PER MAP
+# And also remember to edit the robot.transforms dictionary accordingly!!
+
+reference_coordinates:
+  1F:
+    rmf: [[8.9057, -6.1798],
+          [10.0824, -6.9756]]
+
+    mir: [[7.566725254058838, 7.341535568237305],
+          [8.726073265075684, 6.492395401000977]]
+  2F:
+    rmf: [[8.9057, -6.1798],
+          [10.0824, -6.9756]]
+
+    mir: [[7.566725254058838, 7.341535568237305],
+          [8.726073265075684, 6.492395401000977]]
+
+# FLEET CONFIG =================================================================
+# RMF Fleet parameters
+
+rmf_fleet:
+  name: "test_fleet"
+  limits:
+    linear: [0.7, 0.3] # velocity, acceleration
+    angular: [1.0, 0.45]
+  # Optional if dry_run is NOT enabled, if not provided will be retrieved from MiR fleet. Robot profile is modelled as a circle
+  # profile:
+  #   footprint: 0.5
+  #   vicinity: 0.6
+  reversible: False
+  battery_system:
+    voltage: 24.0
+    capacity: 40.0
+    charging_current: 26.4
+  mechanical_system:
+    mass: 80.0
+    moment_of_inertia: 20.0
+    friction_coefficient: 0.20
+  ambient_system:
+    power: 20.0
+  cleaning_system:
+    power: 650.0
+  recharge_threshold: 0.01
+  recharge_soc: 1.0
+  account_for_battery_drain: True
+  publish_fleet_state: True
+  fleet_state_topic: "fleet_states"
+  fleet_state_publish_frequency: 1
+  task_capabilities: # Specify the types of RMF Tasks that robots in this fleet are capable of performing
+    loop: True
+    delivery: False
+    clean: False
+    finishing_request: "nothing" # [park, charge, nothing]
+    action_categories: ["custom_mission_1"]
