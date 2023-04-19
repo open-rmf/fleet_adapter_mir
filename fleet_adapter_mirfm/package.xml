@@ -4,6 +4,7 @@
   <name>fleet_adapter_mirfm</name>
   <version>0.1.0</version>
   <description>RMF fleet adapter for MiR Fleet Manager</description>
+  <maintainer email="koonpeng@openrobotics.org">Teo Koon Peng</maintainer>
   <maintainer email="xiyu@openrobotics.org">Xi Yu Oh</maintainer>
   <license>Apache License 2.0</license>
 

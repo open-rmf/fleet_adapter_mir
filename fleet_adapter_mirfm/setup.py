@@ -13,8 +13,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Xi Yu Oh',
-    maintainer_email='xiyu@openrobotics.org',
+    maintainer='Teo Koon Peng, Xi Yu Oh',
+    maintainer_email='koonpeng@openrobotics.org, xiyu@openrobotics.org',
     description='RMF fleet adapter for MiR Fleet Manager',
     license='Apache License 2.0',
     entry_points={
