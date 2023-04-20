@@ -17,7 +17,7 @@ cd ~/mir_ws/src/fleet_adapter_mir/configs
 ros2 run fleet_adapter_mirfm fleet_adapter_mirfm -c mirfm_config.yaml -n nav_graph.yaml -d
 ```
 
-Alternatively, if you want to run everything with full capabilities, (though note that it will require an `rmf_traffic_ros2` schedule node to be active, and the MiRFleet REST server to be available)
+Alternatively, if you want to run everything with full capabilities, (though note that it will require an `rmf_traffic_ros2` schedule node to be active, and the MiR Fleet REST server to be available)
 
 ```bash
 ros2 run fleet_adapter_mirfm fleet_adapter_mirfm -c mir_config.yaml -n nav_graph.yaml
