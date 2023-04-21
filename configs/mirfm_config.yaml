@@ -2,7 +2,7 @@
 # To init MiR robot REST APIs and RMF states
 
 mirfm:
-  base_url: 'http://some_url/api/v2.0.0'
+  base_url: 'http://mirfm_ip_or_url/api/v2.0.0'
   username: some_username
   password: some_password
   robot_state_update_frequency: 1
