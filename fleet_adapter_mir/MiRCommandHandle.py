@@ -417,7 +417,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                             ]
                         )
                         _mir_ori_rad = \
-                            _next_waypoint.position[2] - self.transforms['rmf_to_mir'].get_rotation()
+                            _next_waypoint.position[2] + self.transforms['rmf_to_mir'].get_rotation()
                         _mir_ori = math.degrees(_mir_ori_rad % (2 * math.pi))
 
                         if _mir_ori > 180.0:
