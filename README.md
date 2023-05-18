@@ -1,5 +1,5 @@
 # fleet_adapter_mir
-MiR100 Fleet Adapter using the https://github.com/open-rmf/rmf_ros2/tree/main/rmf_fleet_adapter_python
+MiR100 and MirFM Fleet Adapter using the https://github.com/open-rmf/rmf_ros2/tree/main/rmf_fleet_adapter_python
 
 
 
@@ -30,7 +30,7 @@ colcon build
 
 ## Description
 
-This package implements a MiR robot command handle that is managed by a fleet adapter in Python. (Along with some helpers.) It can be used to command and manage a fleet of MiR 100 robots using RMF!
+These packages implement a MiR robot/MiR Fleet command handle that is managed by a fleet adapter in Python. (Along with some helpers.) It can be used to command and manage a fleet of MiR robots using RMF!
 
 It uses the `rmf_fleet_adapter_python` bindings, which allows for communication with `open-rmf` libraries and ROS2 nodes.
 
@@ -38,54 +38,13 @@ In effect, it interfaces the MiR REST API with `open-rmf`, all without needing t
 
 
 
-## Usage
+### MiR vs. MiR Fleet
 
-### Pre-defined RMF variable move mission
+Since the MiR robots and MiR Fleet work with different sets of endpoints that serve different functions, both `fleet_adapter_mir` and `fleet_adapter_mirfm` packages are availble to demonstrate RMF integration between MiR100 and MiR Fleet respectively. In addition, the `mir_fleet_client` package provides additional API needed for the MiR Fleet + RMF integration.
 
-Users are required to define a custom mission with a single `Move` action, which has the variables `x`, `y` and `yaw`, attached to the coordinates `x`, `y` and `yaw` respectively. This is the mission that the fleet adapter will use to send move commands to the robot, while modifying the desired `x`, `y` and `yaw` values.
+For users who wish to take advantage of MiR Fleet's centralized control system/interface or do not have access to individual MiR robots, the `fleet_adapter_mirfm` package enables RMF integration with MiR Fleet by obtaining individual MiR robot positions and mission GUIDs via the MiR Fleet API and dispatching commands directly to the robots themselves. The current MiR Fleet API does not provide all the necessary endpoints for RMF to perform its task allocation and traffic deconfliction to the full extent, hence the implementation contains direct communication between RMF and MiR robots as well.
 
-For more information on how to set up missions, actions and variables, please refer to [official guide documents](https://www.manualslib.com/manual/1941073/Mir-Mir250.html?page=150#manual) (this is for the MiR250).
-
-The name of this custom mission, will need to be passed to the fleet adapter through the configuration file, under `rmf_move_mission`, for each robot's `mir_config`.
-
-```yaml
-robots:
-  ROBOT_NAME:
-    mir_config:
-      ...
-      rmf_move_mission: "CUSTOM_MISSION_NAME"
-      ...
-```
-
-### Example Entry Point
-
-An example usage of the implemented adapter can be found in the `fleet_adapter_mir/fleet_adapter_mir.py` file. It takes in a configuration file and navigation graph, sets everything up, and spins up the fleet adapter.
-
-Call it like so:
-
-```bash
-# Source the workspace
-source ~/mir_ws/install/setup.bash
-
-# Get help
-ros2 run fleet_adapter_mir fleet_adapter_mir -h
-
-# Run in dry-run mode. Disables ROS 2 publishing and MiR REST calls
-cd ~/mir_ws/src/fleet_adapter_mir/configs
-ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yaml -d
-```
-
-Alternatively, if you want to run everything with full capabilities, (though note that it will require an `rmf_traffic_ros2` schedule node to be active, and the MiR REST server to be available)
-
-```bash
-ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yaml
-```
-
-
-
-### Configuration
-
-An example configuration file, `mir_config.yaml` has been provided. It has been generously commented, and in the cases where it has not, the parameter names are self-explanatory enough.
+As such, it is recommended to implement the fleet adapter directly with individual MiR robots using `fleet_adapter_mir`.
 
 
 
