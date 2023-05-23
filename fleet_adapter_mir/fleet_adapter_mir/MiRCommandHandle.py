@@ -504,7 +504,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 # Docking completed
                 if not self.dry_run:
                     if (self.rmf_docking_executed
-                            and api_response['state_id'] == MiRState.READY):
+                        and (api_response['state_id'] == MiRState.READY)):
                         self.rmf_docking_requested = False
                         docking_finished_callback()
 
