@@ -692,6 +692,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             self.mir_missions[self.mir_dock_and_charge_mission]['guid']
         try:
             response = self.mir_api.mission_queue_post(dock_and_charge_mission_guid)
+            return response
         except Exception:
             self.node.get_logger().error(
                 f'{self.name}: Failed to call dock and charge mission '
