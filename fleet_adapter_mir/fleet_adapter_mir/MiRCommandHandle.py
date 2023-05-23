@@ -493,8 +493,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             while self.rmf_docking_requested:
                 if not self.dry_run:
                     api_response = self.mir_api.status_get()
-                    self.rmf_docking_executed = (
-                        'docking' in api_response['mission_text'].lower())
+                    if ('docking' in api_response['mission_text'].lower()):
+                        self.rmf_docking_executed = True
                 else:
                     api_response = None
                     self.rmf_docking_executed = False
