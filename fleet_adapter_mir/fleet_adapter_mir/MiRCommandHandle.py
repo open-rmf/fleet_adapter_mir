@@ -489,7 +489,12 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     self.rmf_docking_requested = False
                     self.rmf_docking_executed = False
 
-            # Check for docking complete!
+            # Check for docking complete:
+            # Once the robot begins executing a queued docking mission, it's API 
+            # response's `mission_text` will change to `Docking...` and with 
+            # `state_text`:`Executing`. But once the docking is completed, the 
+            # `mission_text` will revert to `Waiting for new missions...` and
+            # `state_text`:`Ready...`.
             while self.rmf_docking_requested:
                 if not self.dry_run:
                     api_response = self.mir_api.status_get()
@@ -503,6 +508,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
                 # Docking completed
                 if not self.dry_run:
+                    # Below we try to catch the change in `mission_text` to `Docking...`
+                    # first and then wait till the `state_text` is `Ready...` before 
+                    # considering the docking complete.
                     if (self.rmf_docking_executed
                             and api_response['state_id'] == MiRState.READY):
                         self.rmf_docking_requested = False
