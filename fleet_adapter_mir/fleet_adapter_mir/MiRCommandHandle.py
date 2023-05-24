@@ -488,6 +488,12 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 if response is None:
                     self.rmf_docking_requested = False
                     self.rmf_docking_executed = False
+                
+            if not self.rmf_docking_requested:
+                self.node.get_logger().info(
+                        '[ERROR] Could not queue dock mission for dock at: "{dock_name}"!'
+                    )
+                docking_finished_callback()
 
             # Check for docking complete:
             # Once the robot begins executing a queued docking mission, it's API 
@@ -539,6 +545,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     self.node.get_logger().info(
                         '[ABORT] Pre-empted dock at: "{dock_name}"!'
                     )
+                    docking_finished_callback()
                     return
 
                 self._docking_quit_cv.acquire()
