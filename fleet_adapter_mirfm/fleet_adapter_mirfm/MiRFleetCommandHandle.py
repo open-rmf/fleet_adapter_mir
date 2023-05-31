@@ -598,6 +598,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     self.node.get_logger().info(
                         '[ABORT] Pre-empted dock at: "{dock_name}"!'
                     )
+                    docking_finished_callback()
                     return
 
                 self._docking_quit_cv.acquire()
@@ -772,6 +773,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             self.mir_missions[self.mir_dock_and_charge_mission]['guid']
         try:
             response = self.mir_api.mission_queue_post(dock_and_charge_mission_guid)
+            return response
         except Exception:
             self.node.get_logger().error(
                 f'{self.name}: Failed to call dock and charge mission '
