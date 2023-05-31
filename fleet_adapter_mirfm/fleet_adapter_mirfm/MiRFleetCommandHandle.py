@@ -478,7 +478,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                             ]
                         )
                         _mir_ori_rad = \
-                            _next_waypoint.position[2] - self.transforms[self.rmf_map_name]['rmf_to_mir'].get_rotation()
+                            _next_waypoint.position[2] + self.transforms[self.rmf_map_name]['rmf_to_mir'].get_rotation()
                         _mir_ori = math.degrees(_mir_ori_rad % (2 * math.pi))
 
                         if _mir_ori > 180.0:
@@ -556,6 +556,12 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     self.rmf_docking_requested = False
                     self.rmf_docking_executed = False
 
+            if not self.rmf_docking_requested:
+                self.node.get_logger().info(
+                    '[ERROR] Could not queue dock mission for dock at: "{dock_name}"!'
+                )
+                docking_finished_callback()
+
             # Check for docking complete!
             while self.rmf_docking_requested:
                 if not self.dry_run:
@@ -598,6 +604,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     self.node.get_logger().info(
                         '[ABORT] Pre-empted dock at: "{dock_name}"!'
                     )
+                    docking_finished_callback()
                     return
 
                 self._docking_quit_cv.acquire()
@@ -772,6 +779,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             self.mir_missions[self.mir_dock_and_charge_mission]['guid']
         try:
             response = self.mir_api.mission_queue_post(dock_and_charge_mission_guid)
+            return response
         except Exception:
             self.node.get_logger().error(
                 f'{self.name}: Failed to call dock and charge mission '
