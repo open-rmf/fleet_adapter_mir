@@ -488,13 +488,24 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 if response is None:
                     self.rmf_docking_requested = False
                     self.rmf_docking_executed = False
+                
+            if not self.rmf_docking_requested:
+                self.node.get_logger().info(
+                        '[ERROR] Could not queue dock mission for dock at: "{dock_name}"!'
+                    )
+                docking_finished_callback()
 
-            # Check for docking complete!
+            # Check for docking complete:
+            # Once the robot begins executing a queued docking mission, it's API 
+            # response's `mission_text` will change to `Docking...` and with 
+            # `state_text`:`Executing`. But once the docking is completed, the 
+            # `mission_text` will revert to `Waiting for new missions...` and
+            # `state_text`:`Ready...`.
             while self.rmf_docking_requested:
                 if not self.dry_run:
                     api_response = self.mir_api.status_get()
-                    self.rmf_docking_executed = (
-                        'docking' in api_response['mission_text'].lower())
+                    if ('docking' in api_response['mission_text'].lower()):
+                        self.rmf_docking_executed = True
                 else:
                     api_response = None
                     self.rmf_docking_executed = False
@@ -503,6 +514,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
                 # Docking completed
                 if not self.dry_run:
+                    # Below we try to catch the change in `mission_text` to `Docking...`
+                    # first and then wait till the `state_text` is `Ready...` before 
+                    # considering the docking complete.
                     if (self.rmf_docking_executed
                             and api_response['state_id'] == MiRState.READY):
                         self.rmf_docking_requested = False
@@ -531,6 +545,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     self.node.get_logger().info(
                         '[ABORT] Pre-empted dock at: "{dock_name}"!'
                     )
+                    docking_finished_callback()
                     return
 
                 self._docking_quit_cv.acquire()
@@ -692,6 +707,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             self.mir_missions[self.mir_dock_and_charge_mission]['guid']
         try:
             response = self.mir_api.mission_queue_post(dock_and_charge_mission_guid)
+            return response
         except Exception:
             self.node.get_logger().error(
                 f'{self.name}: Failed to call dock and charge mission '
