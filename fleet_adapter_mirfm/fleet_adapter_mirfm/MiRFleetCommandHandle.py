@@ -478,7 +478,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                             ]
                         )
                         _mir_ori_rad = \
-                            _next_waypoint.position[2] - self.transforms[self.rmf_map_name]['rmf_to_mir'].get_rotation()
+                            _next_waypoint.position[2] + self.transforms[self.rmf_map_name]['rmf_to_mir'].get_rotation()
                         _mir_ori = math.degrees(_mir_ori_rad % (2 * math.pi))
 
                         if _mir_ori > 180.0:
@@ -555,6 +555,12 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 if response is None:
                     self.rmf_docking_requested = False
                     self.rmf_docking_executed = False
+
+            if not self.rmf_docking_requested:
+                self.node.get_logger().info(
+                    '[ERROR] Could not queue dock mission for dock at: "{dock_name}"!'
+                )
+                docking_finished_callback()
 
             # Check for docking complete!
             while self.rmf_docking_requested:
