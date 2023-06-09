@@ -165,7 +165,7 @@ class MirAPI:
 
     def missions_guid_delete(self, guid):
         if not self.connected:
-         return
+            return
         try:
             response = requests.delete(self.prefix + 'missions/' +guid , headers = self.headers, timeout = self.timeout)
             if self.debug:
