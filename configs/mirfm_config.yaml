@@ -14,6 +14,10 @@ mirfm:
     L2: 2F
   # force RMF missions to be re-created if they already exist.
   # force_create_missions: true
+  # Pre-defined mission names
+  rmf_move_mission: "rmf_move"
+  dock_and_charge_mission: "rmf_dock_and_charge"
+  localize_mission: "rmf_localize"
 
 
 # NODE CONFIG ==================================================================

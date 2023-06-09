@@ -139,7 +139,7 @@ def create_fleet(config: Config, api_client: ApiClient, nav_graph_path, transfor
     fleet = mir_adapter.add_fleet(config, adapter, nav_graph)
 
     # Accept Standard RMF Task which are defined in config.yaml
-    fleet = mir_adapter.accept_rmf_tasks(config, fleet)
+    mir_adapter.accept_rmf_tasks(config, fleet)
 
     # Whether to accept custom RMF action tasks
     def _consider(description: dict):
@@ -149,7 +149,7 @@ def create_fleet(config: Config, api_client: ApiClient, nav_graph_path, transfor
     # TODO(AA): To check if the MiR fleet supports these missions names, before
     # confirming.
     # Configure this fleet to perform action category
-    fleet = mir_adapter.add_fleet_actions(config, fleet, _consider)
+    mir_adapter.add_fleet_actions(config, fleet, _consider)
 
     return adapter, fleet, fleet_name, robot_traits, nav_graph
 
@@ -182,7 +182,7 @@ def create_robot_command_handles(config: Config, api_client: ApiClient, handle_d
     maps_api = MapsApi(api_client)
     mir_maps = {m.guid: m for m in maps_api.maps_get()}
 
-    robots = []
+    robots = {}
     for summary in robots_summary:
         mir_robot = robots_api.robots_id_get(summary['id'])
         mir_robot_status = mir_robot['status']
@@ -203,7 +203,6 @@ def create_robot_command_handles(config: Config, api_client: ApiClient, handle_d
                 robot_state_update_frequency=config['mirfm'].get('robot_state_update_frequency', 1),
                 dry_run=dry_run
         )
-        robots.append(robot)
         robot.mir_api = MirFleetAPI(prefix, headers)
         robot.transforms = handle_data['transforms']
         mir_map = mir_maps.get(mir_robot_status['map_id'])
@@ -220,54 +219,17 @@ def create_robot_command_handles(config: Config, api_client: ApiClient, handle_d
         #    with MiRRetryContext(robot):
             robot.mir_name = mir_robot_status["robot_name"]
 
-            robot.load_mir_missions()
-            robot.load_mir_positions()
+            mirfm_config = config['mirfm']
+            mir_adapter.load_missions(robot, mirfm_config)
             robot.load_mir_maps(config)
-
-            # Check that the MiR fleet has defined the RMF move mission,
-            # that this adapter will use repeatedly with varying parameters.
-            rmf_move_mission = 'rmf_move'
-            assert rmf_move_mission in robot.mir_missions, \
-                (f'RMF move mission [{rmf_move_mission}] not yet defined as a mission in MiR')
-            robot.mir_rmf_move_mission = rmf_move_mission
-
-            dock_and_charge_mission = 'rmf_dock_and_charge'
-            assert dock_and_charge_mission in robot.mir_missions, \
-            (f'Dock and charge mission [{dock_and_charge_mission}] not yet defined as a mission in MiR')
-            robot.mir_dock_and_charge_mission = dock_and_charge_mission
-
-            localize_mission = 'rmf_localize'
-            assert localize_mission in robot.mir_missions, \
-                (f'RMF localize mission [{localize_mission}] not yet defined as a mission in MiR')
-            robot.mir_localize_mission = localize_mission
 
         else:
             robot.mir_name = "DUMMY_ROBOT_FOR_DRY_RUN"
 
+        robots[robot_name] = robot
+
         # OBTAIN PLAN STARTS ==================================================
-        starts = plan.compute_plan_starts(
-            handle_data['graph'],
-            robot.rmf_map_name,
-            robot.get_position(rmf=True, as_dimensions=True),
-            handle_data['adapter'].now(),
-            max_merge_waypoint_distance = config['mirfm']['max_merge_waypoint_distance'],
-            max_merge_lane_distance = config['mirfm']['max_merge_lane_distance']
-        )
-        assert starts, ("Robot %s can't be placed on the nav graph!"
-                        % robot_name)
-        assert len(starts) != 0, (f'No StartSet found for robot: {robot_name}')
-
-        # Insert start data into robot
-        start = starts[0]
-
-        if start.lane is not None:  # If the robot is in a lane
-            robot.rmf_current_lane_index = start.lane
-            robot.rmf_current_waypoint_index = None
-            robot.rmf_target_waypoint_index = None
-        else:  # Otherwise, the robot is on a waypoint
-            robot.rmf_current_lane_index = None
-            robot.rmf_current_waypoint_index = start.waypoint
-            robot.rmf_target_waypoint_index = None
+        starts = mir_adapter.obtain_plan_starts(handle_data, robot)
 
         print("MAP_NAME:", robot.rmf_map_name)
 
@@ -478,7 +440,7 @@ def main(argv=sys.argv):
                 fleet_state = FleetState()
                 fleet_state.name = fleet_name
 
-                for robot in robots:
+                for robot in robots.values():
                     fleet_state.robots.append(robot.robot_state)
 
                 fleet_state_pub.publish(fleet_state)
