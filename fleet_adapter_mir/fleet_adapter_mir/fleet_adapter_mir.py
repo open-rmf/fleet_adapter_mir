@@ -8,7 +8,6 @@ from functools import partial
 import rclpy
 import rclpy.node
 from rmf_fleet_msgs.msg import FleetState
-from rmf_task_msgs.msg import TaskProfile, TaskType
 
 import rmf_adapter as adpt
 import rmf_adapter.vehicletraits as traits
@@ -70,20 +69,23 @@ def compute_transforms(rmf_coordinates, mir_coordinates, node=None):
         node.get_logger().info(f"Transformation estimate error: {mse}")
     return transforms
 
-
-def create_fleet(config,nav_graph_path, mock):
-    """Create RMF Adapter, FleetUpdateHandle, and parse navgraph."""
+def create_profile(config):
     profile = traits.Profile(
         geometry.make_final_convex_circle(config['rmf_fleet']['profile']['footprint']),
         geometry.make_final_convex_circle(config['rmf_fleet']['profile']['vicinity'])
     )
+    return profile
+
+def create_vehicle_traits(config, profile):
     robot_traits = traits.VehicleTraits(
         linear=traits.Limits(*config['rmf_fleet']['limits']['linear']),
         angular=traits.Limits(*config['rmf_fleet']['limits']['angular']),
         profile=profile
     )
     robot_traits.differential.reversible = config['rmf_fleet']['reversible']
+    return robot_traits
 
+def create_systems(config):
     voltage = config['rmf_fleet']['battery_system']['voltage']
     capacity = config['rmf_fleet']['battery_system']['capacity']
     charging_current = config['rmf_fleet']['battery_system']['charging_current']
@@ -102,39 +104,20 @@ def create_fleet(config,nav_graph_path, mock):
     ambient_sink = battery.SimpleDevicePowerSink(battery_sys, ambient_power_sys)
     tool_sink = battery.SimpleDevicePowerSink(battery_sys, tool_power_sys)
 
-    nav_graph = graph.parse_graph(nav_graph_path, robot_traits)
+    return battery_sys, motion_sink, ambient_sink, tool_sink
 
-    # RMF_CORE Fleet Adapter: Manages delivery or loop requests
-    if mock:
-        adapter = adpt.MockAdapter(config['node_names']['rmf_fleet_adapter'])
-    else:
-        adapter = adpt.Adapter.make(config['node_names']['rmf_fleet_adapter'])
-
-    assert adapter, ("Adapter could not be init! "
-                     "Ensure a ROS2 scheduler node is running")
-
+def add_fleet(config, adapter, nav_graph):
     fleet_name = config['rmf_fleet']['name']
-    fleet = adapter.add_fleet(fleet_name, robot_traits, nav_graph)
+    fleet = adapter.add_fleet(fleet_name, traits, nav_graph)
 
     if config['rmf_fleet']['publish_fleet_state']:
         fleet.fleet_state_publish_period(None)
 
+    battery_sys, motion_sink, ambient_sink, tool_sink = create_systems(config)
+
     drain_battery = config['rmf_fleet']['account_for_battery_drain']
     recharge_threshold = config['rmf_fleet']['recharge_threshold']
     recharge_soc = config['rmf_fleet']['recharge_soc']
-    finishing_request = config['rmf_fleet']['task_capabilities']['finishing_request']
-    # Set task planner params
-    ok = fleet.set_task_planner_params(
-        battery_sys,
-        motion_sink,
-        ambient_sink,
-        tool_sink,
-        recharge_threshold,
-        recharge_soc,
-        drain_battery,
-        finishing_request)
-    assert ok, ("Unable to set task planner params")
-
     task_capabilities_config = config['rmf_fleet']['task_capabilities']
     finishing_request = task_capabilities_config['finishing_request']
     # Set task planner params
@@ -149,7 +132,11 @@ def create_fleet(config,nav_graph_path, mock):
         finishing_request)
     assert ok, ("Unable to set task planner params")
 
-    # Accept Standard RMF Task which are defined in config.yaml
+    return fleet
+
+def accept_rmf_tasks(config, fleet):
+    fleet_name = config['rmf_fleet']['name']
+    task_capabilities_config = config['rmf_fleet']['task_capabilities']
     always_accept = adpt.fleet_update_handle.Confirmation()
     always_accept.accept()
     if task_capabilities_config['loop']:
@@ -158,6 +145,39 @@ def create_fleet(config,nav_graph_path, mock):
     if task_capabilities_config['delivery']:
         print(f"Fleet [{fleet_name}] is configured to perform Delivery tasks")
         fleet.consider_delivery_requests(lambda desc: always_accept, lambda desc: always_accept)
+
+    return fleet
+
+def add_fleet_actions(config, fleet, _consider):
+    fleet_name = config['rmf_fleet']['name']
+    task_capabilities_config = config['rmf_fleet']['task_capabilities']
+
+    if 'action_categories' in task_capabilities_config:
+        for cat in task_capabilities_config['action_categories']:
+            print(f"Fleet [{fleet_name}] is configured to perform action of category [{cat}]")
+            fleet.add_performable_action(cat, _consider)
+
+    return fleet
+
+def create_fleet(config, nav_graph_path, mock):
+    """Create RMF Adapter, FleetUpdateHandle, and parse navgraph."""
+    profile = create_profile(config)
+    traits = create_vehicle_traits(config, profile)
+    nav_graph = graph.parse_graph(nav_graph_path, traits)
+
+    # RMF_CORE Fleet Adapter: Manages delivery or loop requests
+    if mock:
+        adapter = adpt.MockAdapter(config['node_names']['rmf_fleet_adapter'])
+    else:
+        adapter = adpt.Adapter.make(config['node_names']['rmf_fleet_adapter'])
+    assert adapter, ("Adapter could not be init! "
+                     "Ensure a ROS2 scheduler node is running")
+
+    fleet_name = config['rmf_fleet']['name']
+    fleet = add_fleet(config, adapter, nav_graph)
+
+    # Accept Standard RMF Task which are defined in config.yaml
+    fleet = accept_rmf_tasks(config, fleet)
 
     # Whether to accept custom RMF action tasks
     def _consider(description: dict):
@@ -168,12 +188,9 @@ def create_fleet(config,nav_graph_path, mock):
     # TODO(AA): To check if the MiR fleet supports these missions names, before
     # confirming.
     # Configure this fleet to perform action category
-    if 'action_categories' in task_capabilities_config:
-        for cat in task_capabilities_config['action_categories']:
-            print(f"Fleet [{fleet_name}] is configured to perform action of category [{cat}]")
-            fleet.add_performable_action(cat, _consider)
+    fleet = add_fleet_actions(config, fleet, _consider)
 
-    return adapter, fleet, fleet_name, robot_traits, nav_graph
+    return adapter, fleet, fleet_name, traits, nav_graph
 
 def create_robot_command_handles(config, handle_data, dry_run=False):
     robots = {}
@@ -327,12 +344,14 @@ def main(argv=sys.argv):
 
     # INIT FLEET ==============================================================
     adapter, fleet, fleet_name, robot_traits, nav_graph = create_fleet(
-        config,nav_graph_path, mock=mock)
+        config, nav_graph_path, mock=mock)
 
     # INIT TRANSFORMS =========================================================
-    rmf_coordinates = config['reference_coordinates']['rmf']
-    mir_coordinates = config['reference_coordinates']['mir']
-    transforms = compute_transforms(rmf_coordinates, mir_coordinates)
+    transforms = {}
+    for level, coords in config['reference_coordinates'].items():
+        rmf_coordinates = coords['rmf']
+        mir_coordinates = coords['mir']
+        transforms[level] = compute_transforms(rmf_coordinates, mir_coordinates)
 
     # INIT ROBOT HANDLES ======================================================
     cmd_node = rclpy.node.Node(config['node_names']['robot_command_handle'])

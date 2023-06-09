@@ -1,16 +1,14 @@
 from rmf_fleet_msgs.msg import Location, RobotMode, RobotState
 
 import rmf_adapter as adpt
+import rmf_adapter.plan as plan
 
 from collections import namedtuple
 from typing import Any
 import threading
-import urllib3
 import copy
 import enum
 import math
-import argparse
-import json
 
 from datetime import timedelta
 from dataclasses import dataclass
@@ -22,8 +20,6 @@ __all__ = [
     "MiRCommandHandle",
     #"MiRRetryContext"
 ]
-
-
 
 ###############################################################################
 # TYPES
@@ -96,8 +92,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         # full_control adapter.
         self.current_task_id = 0
 
-        self.transforms = {'rmf_to_mir': None,
-                           'mir_to_rmf': None}
+        self.transforms = {}
 
         # RMF Variables =======================================================
         self.rmf_updater = None
@@ -123,13 +118,13 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 graph_lane.entry.waypoint_index,
                 graph_lane.exit.waypoint_index
             )
-            self.rmf_lane_dict.get(id_tuple, []).append(i)
+            self.rmf_lane_dict.setdefault(id_tuple, []).append(i)
 
             reverse_id_tuple = (
                 graph_lane.exit.waypoint_index,
                 graph_lane.entry.waypoint_index
             )
-            self.rmf_lane_dict.get(reverse_id_tuple, []).append(i)
+            self.rmf_lane_dict.setdefault(reverse_id_tuple, []).append(i)
 
 
         # RMF Location Trackers ===============================================
@@ -151,8 +146,10 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         self.mir_positions = {}  # MiR Place Name-GUID Dict
         self.mir_api = None  # MiR REST API
         self.mir_state = MiRState.PAUSE
-        self.mir_rmf_move_mission = None
-        self.mir_dock_and_charge_mission = None
+        self.mir_rmf_move_mission: str | None = None
+        self.mir_dock_and_charge_mission: str | None = None
+        self.mir_localize_mission: str | None = None
+        self.rmf_to_mir_maps = {}  # Mapping between RMF level to MiR map guid
 
         # Thread Management ===================================================
         # Path queue execution thread
@@ -204,7 +201,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 return
             elif self.paused_path:
                 self.rmf_remaining_path_waypoints = self.paused_path
-                self.paushed_path = []
+                self.paused_path = []
 
                 self.node.get_logger().info(
                     '[RESUME] {self.name}: Saved path restored!'
@@ -269,6 +266,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
         # Obtain plan waypoints ===============================================
         waypoints = copy.copy(waypoints)
+
+        self.update_mir_map(waypoints)
 
         self.rmf_remaining_path_waypoints = [
             (i, waypoints[i]) for i in range(len(waypoints))
@@ -491,8 +490,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                 
             if not self.rmf_docking_requested:
                 self.node.get_logger().info(
-                        '[ERROR] Could not queue dock mission for dock at: "{dock_name}"!'
-                    )
+                    '[ERROR] Could not queue dock mission for dock at: "{dock_name}"!'
+                )
                 docking_finished_callback()
 
             # Check for docking complete:
@@ -939,6 +938,37 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             )
         except Exception as e:
             self.node.get_logger().warn(f'Exception: {e}')
+
+    ##########################################################################
+    # USEFUL METHODS TO BE OVERLOADED IF NECESSARY
+    ##########################################################################
+    def update_mir_map(self, waypoints):
+        pass
+    
+    def get_transformation(self, key, pos, map_name=None):
+        """Returns the transformed pose and orientation for the current
+           map or a specified map given a dictionary key (direction of
+           transformation)"""
+        new_pos = pos
+        new_ori = 0.0
+
+        # If map is specified, check that it exists
+        if map_name is not None and map_name not in self.transforms:
+            print(f'Map [{map_name}] not found in fleet config.yaml, returning'
+                  f' original pose')
+            return new_pos, new_ori
+        # If map not specified, use current rmf_map_name
+        elif map_name is None:
+            map_name = self.rmf_map_name
+
+        if key not in self.transforms[map_name]:
+            print(f'Direction of transformation not found in fleet config.yaml'
+                  f', returning original pose')
+            return new_pos, new_ori
+
+        new_pos = self.transforms[map_name][key].transform(pos[0], pos[1])
+        new_ori = self.transforms[map_name][key].get_rotation()
+        return new_pos, new_ori
 
     ##########################################################################
     # INTERNAL UPDATE LOOP
