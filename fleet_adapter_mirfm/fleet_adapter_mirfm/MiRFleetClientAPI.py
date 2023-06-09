@@ -8,7 +8,7 @@ __all__ = [
 ]
 
 
-class MirAPI:
+class MirFleetAPI:
     def __init__(self, prefix, headers, timeout=10.0, debug=False):
         #HTTP connection
         self.prefix =  prefix

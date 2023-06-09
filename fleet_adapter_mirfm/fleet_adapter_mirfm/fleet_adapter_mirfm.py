@@ -2,7 +2,6 @@ import json
 import math
 import sys
 import yaml
-import nudged
 import argparse
 from base64 import b64encode
 from hashlib import sha256
@@ -14,7 +13,6 @@ from rmf_fleet_msgs.msg import FleetState
 
 import rmf_adapter as adpt
 import rmf_adapter.vehicletraits as traits
-import rmf_adapter.battery as battery
 import rmf_adapter.geometry as geometry
 import rmf_adapter.graph as graph
 import rmf_adapter.plan as plan
@@ -30,60 +28,15 @@ from mir_fleet_client.apis import (
     SettingsApi,
 )
 
+import fleet_adapter_mir as mir_adapter
+
 from .config import Config
-from .MiRFleetClientAPI import MirAPI
-from .MiRFleetCommandHandle import MiRCommandHandle
+from .MiRFleetClientAPI import MirFleetAPI
+from .MiRFleetCommandHandle import MiRFleetCommandHandle
 
 ###############################################################################
 # HELPER FUNCTIONS AND CLASSES
 ###############################################################################
-def sanitise_dict(dictionary, inplace=False, recursive=False):
-    """Remove dictionary Nones."""
-    if type(dictionary) is not dict:
-        return dictionary
-
-    output = {}
-
-    if inplace:
-        del_keys = set()
-
-        for key, val in dictionary.items():
-            if val is None:
-                del_keys.add(key)
-            elif recursive:
-                sanitise_dict(dictionary[key], True, True)
-
-        for key in del_keys:
-            del dictionary[key]
-
-        output = dictionary
-    else:
-        for key, val in dictionary.items():
-            if val is None:
-                continue
-            else:
-                if recursive:
-                    val = sanitise_dict(val, False, True)
-                output[key] = val
-
-    return output
-
-
-def compute_transforms(rmf_coordinates, mir_coordinates, node=None):
-    """Get transforms between RMF and MIR coordinates."""
-    transforms = {
-        'rmf_to_mir': nudged.estimate(rmf_coordinates, mir_coordinates),
-        'mir_to_rmf': nudged.estimate(mir_coordinates, rmf_coordinates)
-    }
-
-    if node:
-        mse = nudged.estimate_error(transforms['rmf_to_mir'],
-                                    rmf_coordinates,
-                                    mir_coordinates)
-
-        node.get_logger().info(f"Transformation estimate error: {mse}")
-    return transforms
-
 
 def add_mir_chargers(api_client: ApiClient, config: Config, nav_graph, transforms):
     charging_groups_api = ChargingGroupsApi(api_client)
@@ -123,7 +76,6 @@ def add_mir_chargers(api_client: ApiClient, config: Config, nav_graph, transform
         wp.set_charger(True)
         print(f'Added charger [{charger_pos["name"]}] to RMF')
 
-
 def assert_homogeneous_fleet(api_client: ApiClient):
     '''
     Checks if the robots in MiR Fleets are all of the same model.
@@ -141,7 +93,6 @@ def assert_homogeneous_fleet(api_client: ApiClient):
             print('Heterogeneous fleet is not supported by RMF and multi fleet is not supported by this adapter')
             exit(1)
     return robot
-
 
 def create_fleet(config: Config, api_client: ApiClient, nav_graph_path, transforms, mock, dry_run=False):
     """Create RMF Adapter, FleetUpdateHandle, and parse navgraph."""
@@ -168,35 +119,9 @@ def create_fleet(config: Config, api_client: ApiClient, nav_graph_path, transfor
             geometry.make_final_convex_circle(longest * 1.2)
         )
     else:
-        profile = traits.Profile(
-            geometry.make_final_convex_circle(config['rmf_fleet']['profile']['footprint']),
-            geometry.make_final_convex_circle(config['rmf_fleet']['profile']['vicinity'])
-        )
-    robot_traits = traits.VehicleTraits(
-        linear=traits.Limits(*config['rmf_fleet']['limits']['linear']),
-        angular=traits.Limits(*config['rmf_fleet']['limits']['angular']),
-        profile=profile
-    )
-    robot_traits.differential.reversible = config['rmf_fleet']['reversible']
+        profile = mir_adapter.create_profile(config)
 
-    voltage = config['rmf_fleet']['battery_system']['voltage']
-    capacity = config['rmf_fleet']['battery_system']['capacity']
-    charging_current = config['rmf_fleet']['battery_system']['charging_current']
-    battery_sys = battery.BatterySystem.make(voltage,capacity,charging_current)
-
-    mass = config['rmf_fleet']['mechanical_system']['mass']
-    moment = config['rmf_fleet']['mechanical_system']['moment_of_inertia']
-    friction = config['rmf_fleet']['mechanical_system']['friction_coefficient']
-    mech_sys = battery.MechanicalSystem.make(mass,moment,friction)
-
-    ambient_power_sys = battery.PowerSystem.make(
-        config['rmf_fleet']['ambient_system']['power'])
-    tool_power_sys = battery.PowerSystem.make(
-        config['rmf_fleet']['cleaning_system']['power'])
-    motion_sink = battery.SimpleMotionPowerSink(battery_sys,mech_sys)
-    ambient_sink = battery.SimpleDevicePowerSink(battery_sys, ambient_power_sys)
-    tool_sink = battery.SimpleDevicePowerSink(battery_sys, tool_power_sys)
-
+    robot_traits = mir_adapter.create_vehicle_traits(config, profile)
     nav_graph = graph.parse_graph(nav_graph_path, robot_traits)
 
     if not dry_run:
@@ -207,69 +132,24 @@ def create_fleet(config: Config, api_client: ApiClient, nav_graph_path, transfor
         adapter = adpt.MockAdapter(config['node_names']['rmf_fleet_adapter'])
     else:
         adapter = adpt.Adapter.make(config['node_names']['rmf_fleet_adapter'])
-
     assert adapter, ("Adapter could not be init! "
                      "Ensure a ROS2 scheduler node is running")
 
     fleet_name = config['rmf_fleet']['name']
-    fleet = adapter.add_fleet(fleet_name, robot_traits, nav_graph)
-
-    if config['rmf_fleet']['publish_fleet_state']:
-        fleet.fleet_state_publish_period(None)
-
-    drain_battery = config['rmf_fleet']['account_for_battery_drain']
-    recharge_threshold = config['rmf_fleet']['recharge_threshold']
-    recharge_soc = config['rmf_fleet']['recharge_soc']
-    finishing_request = config['rmf_fleet']['task_capabilities']['finishing_request']
-    # Set task planner params
-    ok = fleet.set_task_planner_params(
-        battery_sys,
-        motion_sink,
-        ambient_sink,
-        tool_sink,
-        recharge_threshold,
-        recharge_soc,
-        drain_battery,
-        finishing_request)
-    assert ok, ("Unable to set task planner params")
-
-    task_capabilities_config = config['rmf_fleet']['task_capabilities']
-    finishing_request = task_capabilities_config['finishing_request']
-    # Set task planner params
-    ok = fleet.set_task_planner_params(
-        battery_sys,
-        motion_sink,
-        ambient_sink,
-        tool_sink,
-        recharge_threshold,
-        recharge_soc,
-        drain_battery,
-        finishing_request)
-    assert ok, ("Unable to set task planner params")
+    fleet = mir_adapter.add_fleet(config, adapter, nav_graph)
 
     # Accept Standard RMF Task which are defined in config.yaml
-    always_accept = adpt.fleet_update_handle.Confirmation()
-    always_accept.accept()
-    if task_capabilities_config['loop']:
-        print(f"Fleet [{fleet_name}] is configured to perform Loop tasks")
-        fleet.consider_patrol_requests(lambda desc: always_accept)
-    if task_capabilities_config['delivery']:
-        print(f"Fleet [{fleet_name}] is configured to perform Delivery tasks")
-        fleet.consider_delivery_requests(lambda desc: always_accept)
+    fleet = mir_adapter.accept_rmf_tasks(config, fleet)
 
     # Whether to accept custom RMF action tasks
     def _consider(description: dict):
         confirm = adpt.fleet_update_handle.Confirmation()
         confirm.accept()
         return confirm
-
     # TODO(AA): To check if the MiR fleet supports these missions names, before
     # confirming.
     # Configure this fleet to perform action category
-    if 'action_categories' in task_capabilities_config:
-        for cat in task_capabilities_config['action_categories']:
-            print(f"Fleet [{fleet_name}] is configured to perform action of category [{cat}]")
-            fleet.add_performable_action(cat, _consider)
+    fleet = mir_adapter.add_fleet_actions(config, fleet, _consider)
 
     return adapter, fleet, fleet_name, robot_traits, nav_graph
 
@@ -314,7 +194,7 @@ def create_robot_command_handles(config: Config, api_client: ApiClient, handle_d
         headers['Authorization'] = mir_auth(config['mirfm']['username'], config['mirfm']['password'])
 
         # CONFIGURE HANDLE ====================================================
-        robot = MiRCommandHandle(
+        robot = MiRFleetCommandHandle(
                 name=robot_name,
                 mir_id=summary['id'],
                 node=handle_data['node'],
@@ -324,7 +204,7 @@ def create_robot_command_handles(config: Config, api_client: ApiClient, handle_d
                 dry_run=dry_run
         )
         robots.append(robot)
-        robot.mir_api = MirAPI(prefix, headers)
+        robot.mir_api = MirFleetAPI(prefix, headers)
         robot.transforms = handle_data['transforms']
         mir_map = mir_maps.get(mir_robot_status['map_id'])
         if mir_map:
@@ -537,7 +417,7 @@ def main(argv=sys.argv):
     with open(config_path, "r") as f:
         config: Config = yaml.safe_load(f)
 
-    sanitise_dict(config, inplace=True, recursive=True)
+    mir_adapter.sanitise_dict(config, inplace=True, recursive=True)
 
     print("\n== Initialising MiR Robot Command Handles with Config ==")
     pprint(config)
@@ -554,7 +434,7 @@ def main(argv=sys.argv):
     for level, coords in config['reference_coordinates'].items():
         rmf_coordinates = coords['rmf']
         mir_coordinates = coords['mir']
-        transforms[level] = compute_transforms(rmf_coordinates, mir_coordinates)
+        transforms[level] = mir_adapter.compute_transforms(rmf_coordinates, mir_coordinates)
 
     # CREATE MISSIONS =========================================================
     create_missions(api_client, config['mirfm'].get('force_create_missions', False))
