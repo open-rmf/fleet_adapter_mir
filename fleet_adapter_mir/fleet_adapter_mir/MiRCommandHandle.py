@@ -257,7 +257,7 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                         next_arrival_estimator,  # function!
                         path_finished_callback):
         waypoint_indices = ' '.join([str(x.graph_index) for x in waypoints])
-        print(f"Following new Path: {waypoint_indices}")
+        self.node.get_logger().info(f"Following new Path: {waypoint_indices}")
 
         self.stop()
         self.current_task_id += 1
@@ -409,14 +409,14 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                             self.rmf_current_waypoint_index = None
 
                         # SEND NEXT TARGET =====================================
-                        _mir_pos = self.transforms['rmf_to_mir'].transform(
+                        _mir_pos = self.transforms[self.rmf_map_name]['rmf_to_mir'].transform(
                             [
                                 _next_waypoint.position[0],
                                 _next_waypoint.position[1]
                             ]
                         )
                         _mir_ori_rad = \
-                            _next_waypoint.position[2] + self.transforms['rmf_to_mir'].get_rotation()
+                            _next_waypoint.position[2] + self.transforms[self.rmf_map_name]['rmf_to_mir'].get_rotation()
                         _mir_ori = math.degrees(_mir_ori_rad % (2 * math.pi))
 
                         if _mir_ori > 180.0:
@@ -633,10 +633,10 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
     ##########################################################################
     def load_mir_missions(self):
         if self.dry_run:
-            self.node.get_logger().info('{self.name}: DRY_RUN LOAD MISSIONS')
+            self.node.get_logger().info(f'{self.name}: DRY_RUN LOAD MISSIONS')
             return
 
-        self.node.get_logger().info('{self.name}: Retrieving MiR Missions...')
+        self.node.get_logger().info(f'{self.name}: Retrieving MiR Missions...')
         robot_missions_ls = self.mir_api.missions_get()
         for i in robot_missions_ls:
             if i['name'] not in self.mir_missions:
@@ -652,10 +652,10 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
     def load_mir_positions(self):
         if self.dry_run:
-            self.node.get_logger().info('{self.name}: DRY_RUN LOAD POSITIONS')
+            self.node.get_logger().info(f'{self.name}: DRY_RUN LOAD POSITIONS')
             return
 
-        self.node.get_logger().info('{self.name}: Retrieving MiR Positions...')
+        self.node.get_logger().info(f'{self.name}: Retrieving MiR Positions...')
         count = 0
 
         for pos in self.mir_api.positions_get():
@@ -673,6 +673,26 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
                     count += 1
         self.node.get_logger().info(f'updated {count} positions')
 
+    def load_mir_maps(self, mir_config):
+        if not self.mir_api:
+            return
+        self.node.get_logger().info(f'{self.name}: Retrieving MiR Maps...')
+        count = 0
+        mir_maps = self.mir_api.maps_get()
+        self.rmf_to_mir_maps = {}
+        for m in mir_maps:
+            rmf_map = None
+            for k, v in mir_config['maps'].items():
+                if v == m['name']:
+                    rmf_map = k
+                    count += 1
+            # rmf_map = mir_config['maps'].get(m['name'], None)
+            if rmf_map is None:
+                print(f'MiR map {m["name"]} has no mapping to RMF map')
+                continue
+            self.rmf_to_mir_maps[rmf_map] = m['guid']
+        self.node.get_logger().info(f'retrieved {count} maps')
+
     ##########################################################################
     # MISSION METHODS
     ##########################################################################
@@ -682,9 +702,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         mission = {
             'mission_id': rmf_move_mission_guid,
             'parameters': [
-                {'id': 'x', 'value': mir_location.x, 'label': f'{mir_location.x:.3f}'},
-                {'id': 'y', 'value': mir_location.y, 'label': f'{mir_location.y:.3f}'},
-                {'id': 'yaw', 'value': mir_location.yaw, 'label': f'{mir_location.yaw:.3f}'}
+                {'id': 'X', 'value': mir_location.x, 'label': f'{mir_location.x:.3f}'},
+                {'id': 'Y', 'value': mir_location.y, 'label': f'{mir_location.y:.3f}'},
+                {'id': 'Orientation', 'value': mir_location.yaw, 'label': f'{mir_location.yaw:.3f}'}
             ],
             "priority": 0,
             "description": "variable move mission to be called by open-rmf"
@@ -693,8 +713,8 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
             response = self.mir_api.mission_queue_post(rmf_move_mission_guid, mission)
         except Exception:
             self.node.get_logger().error(
-                '{self.name}: Failed to call rmf_move_mission to '
-                '[{mir_location.x:3f}_{mir_location.y:.3f}]!'
+                f'{self.name}: Failed to call rmf_move_mission to '
+                f'[{mir_location.x:3f}_{mir_location.y:.3f}]!'
             )
 
     def queue_dock_and_charge_mission(self):
@@ -732,9 +752,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
 
         # Output is [x, y, yaw]
         if rmf:
-            rmf_pos = self.transforms['mir_to_rmf'].transform(mir_pos)
+            rmf_pos = self.transforms[self.rmf_map_name]['mir_to_rmf'].transform(mir_pos)
             rmf_ori = (math.radians(mir_ori % 360)
-                       + self.transforms['mir_to_rmf'].get_rotation())
+                       + self.transforms[self.rmf_map_name]['mir_to_rmf'].get_rotation())
             output = [*rmf_pos, rmf_ori]
         else:
             output = [*mir_pos, mir_ori]
@@ -765,9 +785,9 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
         mir_pos = [api_response['position']['x'], api_response['position']['y']]
         mir_ori = api_response['position']['orientation']
 
-        rmf_pos = self.transforms['mir_to_rmf'].transform(mir_pos)
+        rmf_pos = self.transforms[self.rmf_map_name]['mir_to_rmf'].transform(mir_pos)
         rmf_ori = (math.radians(mir_ori % 360)
-                   + self.transforms['mir_to_rmf'].get_rotation())
+                   + self.transforms[self.rmf_map_name]['mir_to_rmf'].get_rotation())
 
         rmf_3d_pos = [*rmf_pos, rmf_ori]
 
@@ -943,7 +963,48 @@ class MiRCommandHandle(adpt.RobotCommandHandle):
     # USEFUL METHODS TO BE OVERLOADED IF NECESSARY
     ##########################################################################
     def update_mir_map(self, waypoints):
-        pass
+        # FIXME(koonpeng): When exiting from a lift, RMF may instruct the robot to go to a
+        # temporary waypoint with no graph index. There is no known way to find the
+        # level for this waypoint. This uses a (possibly) hacky solution by looking for the
+        # first waypoint with a graph index.
+        first_non_none_wp = next(x for x in waypoints if x.graph_index is not None)
+        wp_map_name = self.rmf_graph.get_waypoint(first_non_none_wp.graph_index).map_name
+        if wp_map_name != self.rmf_map_name:
+            self.node.get_logger().info(f'Changing map to {wp_map_name}')
+            map_id = self.rmf_to_mir_maps.get(wp_map_name)
+            if not map_id:
+                self.node.get_logger().info(f'Failed to change map (cannot find corresponding MiR map for {wp_map_name})')
+                exit(1)
+
+            # tell MiR the new robot location
+            # FIXME(koonpeng): This only works if the MiR maps for each levels are aligned.
+            # A proper fix would require us to know the initial robot position on the new
+            # map, which RMF doesn't seem to provide. The first waypoint after a map change
+            # is the temp lift exit waypoint. Even if we look at the last waypoint of the previous
+            # path, we can't find the "connected" waypoint on the new map as vertex properties
+            # are not exposed to the python API. Fiducials are also not exposed.
+            new_pos = self.transforms[wp_map_name]['rmf_to_mir'].transform(
+                (self.robot_state.location.x, self.robot_state.location.y)
+            )
+            ori = math.degrees(self.get_position(rmf=True)[2] + self.transforms[wp_map_name]['rmf_to_mir'].get_rotation())
+            # adapted from https://stackoverflow.com/questions/2320986/easy-way-to-keeping-angles-between-179-and-180-degrees
+            ori = ori % 360
+            ori = (ori + 360) % 360
+            if (ori > 180):
+                ori -= 360
+            # TODO(XY): check that this updates the mir robot's internal map properly
+            self.mir_api.status_put({
+                'map_id': map_id,
+                'position': {
+                    'x': new_pos[0],
+                    'y': new_pos[1],
+                    'orientation': ori,
+                }
+            })
+
+            self.mir_api.mission_queue_post(self.mir_missions[self.mir_localize_mission]['guid'])
+
+            self.rmf_map_name = wp_map_name
     
     def get_transformation(self, key, pos, map_name=None):
         """Returns the transformed pose and orientation for the current

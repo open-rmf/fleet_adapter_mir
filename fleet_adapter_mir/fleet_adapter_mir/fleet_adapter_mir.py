@@ -106,7 +106,7 @@ def create_systems(config):
 
     return battery_sys, motion_sink, ambient_sink, tool_sink
 
-def add_fleet(config, adapter, nav_graph):
+def add_fleet(config, adapter, traits, nav_graph):
     fleet_name = config['rmf_fleet']['name']
     fleet = adapter.add_fleet(fleet_name, traits, nav_graph)
 
@@ -170,7 +170,7 @@ def create_fleet(config, nav_graph_path, mock):
                      "Ensure a ROS2 scheduler node is running")
 
     fleet_name = config['rmf_fleet']['name']
-    fleet = add_fleet(config, adapter, nav_graph)
+    fleet = add_fleet(config, adapter, traits, nav_graph)
 
     # Accept Standard RMF Task which are defined in config.yaml
     accept_rmf_tasks(config, fleet)
@@ -232,6 +232,7 @@ def load_missions(robot, mir_config):
 
     robot.load_mir_missions()
     robot.load_mir_positions()
+    robot.load_mir_maps(mir_config)
 
     # Check that the MiR fleet has defined the RMF move mission,
     # that this adapter will use repeatedly with varying parameters.

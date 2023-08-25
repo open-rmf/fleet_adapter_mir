@@ -41,7 +41,7 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + 'missions', headers = self.headers, timeout = 1.0)
+            response = requests.get(self.prefix + 'missions', headers=self.headers, timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -177,3 +177,18 @@ class MirAPI:
         except Exception as err:
             print(f"Other  error: {err}")
             return False
+
+    def maps_get(self):
+        if not self.connected:
+            return []
+        try:
+            response = requests.get(self.prefix + 'maps', headers = self.headers, timeout = self.timeout)
+            if self.debug:
+                print(f"Response: {response.headers}")
+            return response.json()
+        except HTTPError as http_err:
+            print(f"HTTP error: {http_err}")
+            return []
+        except Exception as err:
+            print(f"Other  error: {err}")
+            return []
