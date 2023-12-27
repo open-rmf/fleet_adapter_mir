@@ -1,73 +1,60 @@
-# ROBOT CONFIG =================================================================
-# To init MiR robot REST APIs and RMF states
-
-robots:
-  # NOTE(CH3): This robot name is different from the MiR robot name
-  # for some reason
-  #
-  # I don't have access to the MiR REST server to test it out
-  # Doesn't seem very configurable from the code side?
-  #
-  # So for now, this name is the name used in the script only.
-  my_test_robot:
-    mir_config:
-      base_url: "http://some.ip.address/api/v2.0.0/"
-      user: "application/json"
-      password: "Basic HASH_OF_PASSWORD_OBTAINED_AT_API_DOCUMENTATION_PAGE"
-      rmf_move_mission: "rmf_default_move_mission" # This mission must be predefined
-      dock_and_charge_mission: "dock_to_charger" # This mission must be predefined
-
-    rmf_config:
-      robot_state_update_frequency: 1
-      start:
-        map_name: "L1"
-        max_merge_waypoint_distance: 3.0
-        max_merge_lane_distance: 3.0
-        # NOTE(CH3):
-        # If you leave these empty, the robot will try to figure it out on init
-        # from the MiR reported location.
-        #
-        # Otherwise, fill BOTH of these! And make sure that the robot starts
-        # ON the waypoint!
-        waypoint_index: 0 # Optional
-        orientation: 0.0 # Optional, radians
-      charger:
-        waypoint: "charger_waypoint"
-
-
-# NODE CONFIG ==================================================================
 # To init the ROS2 node names used in the script
-
 node_names:
   robot_command_handle: "rmf_mir_fleet_command_handler"
   fleet_state_publisher: "rmf_mir_fleet_state_publisher"
-  rmf_fleet_adapter: "TestDeliveryAdapter"
+  rmf_fleet_adapter: "DeliveryAdapter"
 
 
-# TRANSFORM CONFIG =============================================================
-# For computing transforms between MiR and RMF coordinate systems
-#
-# NOTE(CH3): I am assuming that the transform is the same across maps
-# Otherwise... Future me or future someone else, PLEASE KEY THIS PER MAP
-# And also remember to edit the robot.transforms dictionary accordingly!!
+# Conversions between RMF data and MiR data
+conversions:
+  reference_coordinates:
+    L1: # Map name
+      rmf: [[0.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0]]
+      mir: [[0.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0]]
+    L2:
+      rmf: [[0.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0]]
+      mir: [[0.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0]]
 
-reference_coordinates:
-  rmf: [[26.95, -20.23],
-        [29.26, -22.38],
-        [11.4, -16.48],
-        [12.46, -16.99]]
+  # RMF to MIR map names
+  maps:
+    L1: "Level 1" # Map name stored on MiR
+    L2: "Level 2"
 
-  mir: [[7.2, 16.6],
-        [5.15, 18.35],
-        [23, 12.35],
-        [22.05, 12.95]]
+  missions:
+    move: "rmf_move" # This mission must be predefined
+    dock_and_charge: "rmf_dock_and_charge" # This mission must be predefined
+    localize: "rmf_localize"
+    # dock_to_cart: "rmf_dock_to_cart"
+    # pickup: "rmf_pickup_cart"
+    # dropoff: "rmf_dropoff_cart"
+    # exit_lot: "rmf_exit_lot"
+    go_to: "rmf_move_to_position"
+    # check_footprint: "rmf_update_footprint"
+
+  lift_positions:
+    lift_1: # Name of lift matching the navigation graph
+      L1:
+        name: "Level_1_Lift" # Name of lift position stored on the robot on this map
+        # tolerance: 0.3
+      L2:
+        name: "Level_2_Lift"
 
 
-# FLEET CONFIG =================================================================
 # RMF Fleet parameters
-
 rmf_fleet:
-  name: "test_fleet"
+  name: "mir"
   limits:
     linear: [0.7, 0.3] # velocity, acceleration
     angular: [1.0, 0.45]
@@ -85,17 +72,27 @@ rmf_fleet:
     friction_coefficient: 0.20
   ambient_system:
     power: 20.0
-  cleaning_system:
+  tool_system:
     power: 650.0
   recharge_threshold: 0.01
   recharge_soc: 1.0
   account_for_battery_drain: True
-  publish_fleet_state: True
-  fleet_state_topic: "fleet_states"
-  fleet_state_publish_frequency: 1
+  publish_fleet_state: 1.0 # Publish frequency (Hz) for the fleet state
   task_capabilities: # Specify the types of RMF Tasks that robots in this fleet are capable of performing
     loop: True
-    delivery: False
+    delivery: True
     clean: False
-    finishing_request: "nothing" # [park, charge, nothing]
-    action_categories: ["custom_mission_1"]
+  finishing_request: "charge" # [park, charge, nothing]
+  actions: []
+  robots:
+    mir_1:
+      charger: "Charger_1"
+      max_merge_waypoint_distance: 0.25
+      max_merge_lane_distance: 1.0
+      mir_config:
+        base_url: "http://some.ip.address/api/v2.0.0/"
+        user: "application/json"
+        password: "Basic HASH_OF_PASSWORD_OBTAINED_AT_API_DOCUMENTATION_PAGE"
+
+  robot_state_update_frequency: 1
+  debug: False # whether to enable debug printouts from EasyFullControl

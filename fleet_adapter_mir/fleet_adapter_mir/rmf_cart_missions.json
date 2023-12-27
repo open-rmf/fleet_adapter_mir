@@ -1,0 +1,559 @@
+{
+  "rmf_exit_lot": [
+    {
+      "priority": 1,
+      "parameters": [
+        {
+          "value": "mirconst-guid-0000-0001-footprint000",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    },
+    {
+      "priority": 2,
+      "parameters": [
+        {
+          "value": -1.0,
+          "input_name": null,
+          "id": "x"
+        },
+        {
+          "value": 0.0,
+          "input_name": null,
+          "id": "y"
+        },
+        {
+          "value": 0.0,
+          "input_name": null,
+          "id": "orientation"
+        },
+        {
+          "value": 0.25,
+          "input_name": null,
+          "id": "max_linear_speed"
+        },
+        {
+          "value": 0.25,
+          "input_name": null,
+          "id": "max_angular_speed"
+        },
+        {
+          "value": true,
+          "input_name": null,
+          "id": "collision_detection"
+        }
+      ],
+      "action_type": "relative_move"
+    },
+    {
+      "priority": 3,
+      "parameters": [
+        {
+          "value": "plc_register",
+          "input_name": null,
+          "id": "compare"
+        },
+        {
+          "value": "e2fc134a-56bb-11ee-a409-00012998f454",
+          "input_name": null,
+          "id": "module"
+        },
+        {
+          "value": "0",
+          "input_name": null,
+          "id": "io_port"
+        },
+        {
+          "value": "8",
+          "input_name": null,
+          "id": "register"
+        },
+        {
+          "value": "==",
+          "input_name": null,
+          "id": "operator"
+        },
+        {
+          "value": 1.0,
+          "input_name": null,
+          "id": "value"
+        },
+        {
+          "value": "",
+          "input_name": null,
+          "id": "true"
+        },
+        {
+          "value": "",
+          "input_name": null,
+          "id": "false"
+        }
+      ],
+      "action_type": "if"
+    },
+    {
+      "priority": 4,
+      "parameters": [
+        {
+          "value": "f65abbec-ea4e-11ed-af33-00012983ef2c",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    },
+    {
+      "priority": 5,
+      "parameters": [
+        {
+          "value": "mirconst-guid-0000-0001-footprint000",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    }
+  ],
+  "rmf_dock_to_cart": [
+    {
+      "priority": 1,
+      "parameters": [
+        {
+          "value": "mirconst-guid-0000-0001-footprint000",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    },
+    {
+      "priority": 2,
+      "parameters": [
+        {
+          "value": null,
+          "input_name": "cart_marker",
+          "id": "marker"
+        },
+        {
+          "value": "cbd0de8c-467c-11ee-899f-00012983ef2c",
+          "input_name": null,
+          "id": "marker_type"
+        },
+        {
+          "value": "10",
+          "input_name": null,
+          "id": "retries"
+        },
+        {
+          "value": 0.25,
+          "input_name": null,
+          "id": "max_linear_speed"
+        }
+      ],
+      "action_type": "docking"
+    }
+  ],
+  "rmf_dropoff_cart": [
+    {
+      "priority": 2,
+      "parameters": [
+        {
+          "value": "mirconst-guid-0000-0001-footprint000",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    },
+    {
+      "priority": 3,
+      "parameters": [
+        {
+          "value": -1.0,
+          "input_name": null,
+          "id": "x"
+        },
+        {
+          "value": 0.0,
+          "input_name": null,
+          "id": "y"
+        },
+        {
+          "value": 0.0,
+          "input_name": null,
+          "id": "orientation"
+        },
+        {
+          "value": 0.25,
+          "input_name": null,
+          "id": "max_linear_speed"
+        },
+        {
+          "value": 0.25,
+          "input_name": null,
+          "id": "max_angular_speed"
+        },
+        {
+          "value": true,
+          "input_name": null,
+          "id": "collision_detection"
+        }
+      ],
+      "action_type": "relative_move"
+    },
+    {
+      "priority": 1,
+      "parameters": [
+        {
+          "value": "mirconst-guid-0000-0011-actionlist00",
+          "input_name": null,
+          "id": "mission_id"
+        }
+      ],
+      "action_type": "load_mission"
+    }
+  ],
+  "rmf_follow_line": [
+    {
+      "priority": 1,
+      "parameters": [],
+      "action_type": "adjust_localization"
+    },
+    {
+      "priority": 2,
+      "parameters": [
+        {
+          "value": "plc_register",
+          "input_name": null,
+          "id": "compare"
+        },
+        {
+          "value": "e2fc134a-56bb-11ee-a409-00012998f454",
+          "input_name": null,
+          "id": "module"
+        },
+        {
+          "value": "0",
+          "input_name": null,
+          "id": "io_port"
+        },
+        {
+          "value": "8",
+          "input_name": null,
+          "id": "register"
+        },
+        {
+          "value": "==",
+          "input_name": null,
+          "id": "operator"
+        },
+        {
+          "value": 1.0,
+          "input_name": null,
+          "id": "value"
+        },
+        {
+          "value": "",
+          "input_name": null,
+          "id": "true"
+        },
+        {
+          "value": "",
+          "input_name": null,
+          "id": "false"
+        }
+      ],
+      "action_type": "if"
+    },
+    {
+      "priority": 3,
+      "parameters": [
+        {
+          "value": "f65abbec-ea4e-11ed-af33-00012983ef2c",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    },
+    {
+      "priority": 4,
+      "parameters": [
+        {
+          "value": "mirconst-guid-0000-0001-footprint000",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    },
+    {
+      "priority": 5,
+      "parameters": [
+        {
+          "value": "to be replaced with a value guid in the fleet adapter",
+          "input_name": "start_waypoint",
+          "id": "position"
+        },
+        {
+          "value": 10,
+          "input_name": null,
+          "id": "retries"
+        },
+        {
+          "value": 0.2,
+          "input_name": null,
+          "id": "distance_threshold"
+        }
+      ],
+      "action_type": "move"
+    },
+    {
+      "priority": 6,
+      "parameters": [
+        {
+          "value": "plc_register",
+          "input_name": null,
+          "id": "compare"
+        },
+        {
+          "value": "e2fc134a-56bb-11ee-a409-00012998f454",
+          "input_name": null,
+          "id": "module"
+        },
+        {
+          "value": "0",
+          "input_name": null,
+          "id": "io_port"
+        },
+        {
+          "value": "8",
+          "input_name": null,
+          "id": "register"
+        },
+        {
+          "value": "==",
+          "input_name": null,
+          "id": "operator"
+        },
+        {
+          "value": 1.0,
+          "input_name": null,
+          "id": "value"
+        },
+        {
+          "value": "",
+          "input_name": null,
+          "id": "true"
+        },
+        {
+          "value": "",
+          "input_name": null,
+          "id": "false"
+        }
+      ],
+      "action_type": "if"
+    },
+    {
+      "priority": 7,
+      "parameters": [
+        {
+          "value": "454e65f9-06b9-11ee-acbc-00012983ef2c",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    },
+    {
+      "priority": 8,
+      "parameters": [
+        {
+          "value": "mirconst-guid-0000-0001-footprint000",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    },
+    {
+      "priority": 9,
+      "parameters": [
+        {
+          "value": "to be replaced with a value guid in the fleet adapter",
+          "input_name": "end_waypoint",
+          "id": "position"
+        },
+        {
+          "value": 10,
+          "input_name": null,
+          "id": "retries"
+        },
+        {
+          "value": 0.2,
+          "input_name": null,
+          "id": "distance_threshold"
+        }
+      ],
+      "action_type": "move"
+    },
+    {
+      "priority": 10,
+      "parameters": [],
+      "action_type": "adjust_localization"
+    }
+  ],
+  "rmf_pickup_cart": [
+    {
+      "priority": 1,
+      "parameters": [
+        {
+          "value": "13",
+          "input_name": null,
+          "id": "register"
+        },
+        {
+          "value": "set",
+          "input_name": null,
+          "id": "action"
+        },
+        {
+          "value": 0.0,
+          "input_name": null,
+          "id": "value"
+        }
+      ],
+      "action_type": "set_plc_register"
+    },
+    {
+      "priority": 2,
+      "parameters": [
+        {
+          "value": "14",
+          "input_name": null,
+          "id": "register"
+        },
+        {
+          "value": 1.0,
+          "input_name": null,
+          "id": "value"
+        },
+        {
+          "value": 0.0,
+          "input_name": null,
+          "id": "reset_value"
+        },
+        {
+          "value": "",
+          "input_name": null,
+          "id": "content"
+        }
+      ],
+      "action_type": "set_reset_plc"
+    },
+    {
+      "priority": 3,
+      "parameters": [
+        {
+          "value": "8",
+          "input_name": null,
+          "id": "register"
+        },
+        {
+          "value": 1.0,
+          "input_name": null,
+          "id": "value"
+        },
+        {
+          "value": "00:01:00.000000",
+          "input_name": null,
+          "id": "timeout"
+        }
+      ],
+      "action_type": "wait_for_plc_register"
+    },
+    {
+      "priority": 4,
+      "parameters": [
+        {
+          "value": "f65abbec-ea4e-11ed-af33-00012983ef2c",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    }
+  ],
+  "rmf_update_footprint": [
+    {
+      "priority": 1,
+      "parameters": [
+        {
+          "value": "plc_register",
+          "input_name": null,
+          "id": "compare"
+        },
+        {
+          "value": "e2fc134a-56bb-11ee-a409-00012998f454",
+          "input_name": null,
+          "id": "module"
+        },
+        {
+          "value": "0",
+          "input_name": null,
+          "id": "io_port"
+        },
+        {
+          "value": "8",
+          "input_name": null,
+          "id": "register"
+        },
+        {
+          "value": "==",
+          "input_name": null,
+          "id": "operator"
+        },
+        {
+          "value": 1.0,
+          "input_name": null,
+          "id": "value"
+        },
+        {
+          "value": "",
+          "input_name": null,
+          "id": "true"
+        },
+        {
+          "value": "",
+          "input_name": null,
+          "id": "false"
+        }
+      ],
+      "action_type": "if"
+    },
+    {
+      "priority": 2,
+      "parameters": [
+        {
+          "value": "f65abbec-ea4e-11ed-af33-00012983ef2c",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    },
+    {
+      "priority": 3,
+      "parameters": [
+        {
+          "value": "mirconst-guid-0000-0001-footprint000",
+          "input_name": null,
+          "id": "footprint"
+        }
+      ],
+      "action_type": "set_footprint"
+    }
+  ]
+}
