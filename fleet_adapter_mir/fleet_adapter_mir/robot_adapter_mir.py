@@ -1,8 +1,13 @@
 import math
+import numpy as np
+from icecream import ic
+import enum
+import copy
 import time
 from typing import Any
 from dataclasses import dataclass
 import json
+import datetime
 from rmf_adapter.robot_update_handle import Tier
 import rmf_adapter.easy_full_control as rmf_easy
 import rclpy
@@ -10,6 +15,9 @@ import rclpy.node as Node
 from rclpy.duration import Duration
 from .mir_api import MirAPI, MirStatus, MiRStateCode
 from threading import Lock
+
+# Import plugins
+from .rmf_cart_delivery import CartDelivery
 
 
 # Parallel processing solution derived from
@@ -58,10 +66,12 @@ class RobotAdapterMiR:
         name: str,
         rmf_config: rmf_easy.RobotConfiguration,
         mir_config: dict,
+        # pickup_config: dict,
         conversions: dict,
         rmf_missions: dict,
         fleet_handle,
         fleet_config,
+        plugin_config: dict | None,
         node: Node,
         event_loop,
         debug=False
@@ -109,6 +119,19 @@ class RobotAdapterMiR:
         self.nav_issue_ticket = None  # We should only have one issue ticket at a time to manage unsuccessful missions
         self.requested_replan = False
         self.replan_counts = 0
+        self.plugins = {}
+        # Available plugins:
+        if 'rmf_cart_delivery' in plugin_config:
+            self.plugins['rmf_cart_delivery'] = CartDelivery(
+                node=node,
+                name=name,
+                mir_api=self.api,
+                update_handle=self.update_handle,
+                actions=plugin_config['rmf_cart_delivery']['actions'],
+                missions_json=plugin_config['rmf_cart_delivery']['missions_json'],
+                action_config=plugin_config['rmf_cart_delivery'],
+                retrieve_mir_coordinates=self.retrieve_mir_coordinates)
+        # To be added on with other plugins
 
         self.fleet_handle = fleet_handle
         self.update_handle = fleet_handle.add_robot(
@@ -165,6 +188,10 @@ class RobotAdapterMiR:
         # Update RMF to mark the ActionExecution as finished
         if mission is not None and mission.done:
             self.update_rmf_finished(mission)
+
+        # PerformAction related checks
+        for plugin in self.plugins.values():
+            plugin.update_action()
 
         # Clear error on updates
         if status is not None and 'errors' in status.response and len(status.response['errors']) > 0:
@@ -457,11 +484,20 @@ class RobotAdapterMiR:
         mission.set_mission_queue_id(mission_queue_id)
 
     def perform_action(self, category, description, execution):
-        task_id = self.update_handle.more().current_task_id()
-        # -----------------------------------------------------
-        # INSERT PERFORM ACTION LOGIC HERE
-        # -----------------------------------------------------
+        for plugin in self.plugins.values():
+            if category in plugin.actions:
+                action = self.actions[category]
+                action.perform_action(category, description, execution)
+                return
         raise NotImplementedError
+
+    def retrieve_mir_coordinates(self, waypoint_name: str):
+        transform = self.fleet_config.transformations_to_robot_coordinates
+        transform_current_map = transform.get(self.current_map)
+        rmf_pose = self.fleet_config.graph.find_waypoint(waypoint_name).location
+        new_rmf_pose = np.array([rmf_pose[0], rmf_pose[1], 0.0])
+        mir_pose = transform_current_map.apply(new_rmf_pose)
+        return mir_pose
 
     def dist(self, A, B):
         assert(len(A) > 1)

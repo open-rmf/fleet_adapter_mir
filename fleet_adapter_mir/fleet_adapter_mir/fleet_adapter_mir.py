@@ -142,6 +142,7 @@ def create_fleet(fleet_config, config_yaml, cmd_node, rmf_missions) -> FleetAdap
     conversions = config_yaml['conversions']
     update_frequency = config_yaml['rmf_fleet']['robot_state_update_frequency']
     debug = config_yaml['rmf_fleet']['debug']
+    plugin_config = config_yaml.get('plugins')
 
     event_loop = asyncio.new_event_loop()
 
@@ -156,6 +157,7 @@ def create_fleet(fleet_config, config_yaml, cmd_node, rmf_missions) -> FleetAdap
             rmf_missions,
             fleet_handle,
             fleet_config,
+            plugin_config,
             cmd_node,
             event_loop,
             debug,

@@ -96,3 +96,19 @@ rmf_fleet:
 
   robot_state_update_frequency: 1
   debug: False # whether to enable debug printouts from EasyFullControl
+
+plugins:
+  rmf_cart_delivery:
+    actions: ["delivery_pickup", "delivery_dropoff"]
+    missions:
+      dock_to_cart: "rmf_dock_to_cart"
+      pickup: "rmf_pickup_cart_top"
+      dropoff: "rmf_dropoff_cart_top"
+      exit_lot: "rmf_exit_lot"
+      update_footprint: "rmf_update_footprint"
+    footprints:
+      robot: "MiR100-200"
+      cart: "HostShelfCart800"
+    mission_json: "/path/to/mission/json"
+    search_timeout: 60
+    pickup_dist_threshold: 3.0 # metres

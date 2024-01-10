@@ -69,7 +69,6 @@ class MirAPI:
         self.mission_keys: dict = conversions['missions']
         self.mission_actions: dict = {}
         self.mission_action_types: dict = {}
-        self.footprint_keys: dict = conversions['footprints']
         self.attempt_connection()
 
     def attempt_connection(self):
@@ -86,7 +85,7 @@ class MirAPI:
 
         self.load_missions()
         self.load_maps()
-        self.create_rmf_missions()
+        self.create_missions(self.rmf_missions)
 
         move_key = 'move'
         assert move_key in self.mission_keys, (
@@ -122,11 +121,6 @@ class MirAPI:
             return target_mission
 
         self.localize_mission: str | None = make_optional_mission('localize')
-        self.dock_to_cart_mission: str | None = make_optional_mission('dock_to_cart')
-        self.pickup_mission: str | None = make_optional_mission('pickup')
-        self.dropoff_mission: str | None = make_optional_mission('dropoff')
-        self.exit_mission: str | None = make_optional_mission('exit_lot')
-        self.footprint_mission: str | None = make_optional_mission('check_footprint')
         self.go_to: str | None = make_optional_mission('go_to')
 
         if self.localize_mission is not None:
@@ -161,10 +155,6 @@ class MirAPI:
 
         self.created_by_id = self.me_get()['guid']
 
-        # Set footprints
-        self.footprint = self.footprints_guid_get(self.footprint_keys['robot'])
-        self.update_footprint()
-
     def update_known_positions(self):
         self.known_positions = {}
         for pos in self.positions_get():
@@ -182,8 +172,8 @@ class MirAPI:
                     self.positions_guid_get(pos['guid'])
                 )
 
-    def create_rmf_missions(self):
-        if self.rmf_missions is None:
+    def create_missions(self, rmf_missions):
+        if rmf_missions is None:
             return
 
         # Retrieve the RMF group id if it already exists
@@ -200,7 +190,7 @@ class MirAPI:
             rmf_mission_group_id = mission_group['guid']
 
         # Create RMF missions if they don't exist on the robot
-        for mission_name, mission_json in self.rmf_missions.items():
+        for mission_name, mission_json in rmf_missions.items():
             if mission_name not in self.known_missions:
                 # Create the relevant mission on MiR
                 mission = self.missions_post(mission_name, rmf_mission_group_id)
@@ -875,11 +865,3 @@ class MirAPI:
                         mission_params = [p]
                         return mission_params
         return mission_params
-
-    def update_footprint(self):
-        ft_guid = self.footprint
-        ft_params = self.get_mission_params_with_value(self.footprint_mission,
-                                                       'set_footprint',
-                                                       'footprint',
-                                                       ft_guid)
-        return self.queue_mission_by_name(self.footprint_mission, ft_params)
