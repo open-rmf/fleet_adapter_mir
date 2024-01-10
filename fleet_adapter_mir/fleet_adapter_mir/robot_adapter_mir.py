@@ -59,6 +59,7 @@ class RobotAdapterMiR:
         rmf_config: rmf_easy.RobotConfiguration,
         mir_config: dict,
         conversions: dict,
+        rmf_missions: dict,
         fleet_handle,
         fleet_config,
         node: Node,
@@ -78,7 +79,7 @@ class RobotAdapterMiR:
             'Content-Type': mir_config['user'],
             'Authorization': mir_config['password'],
         }
-        self.api: MirAPI = MirAPI(prefix, headers, conversions)
+        self.api: MirAPI = MirAPI(prefix, headers, conversions, rmf_missions)
 
         status = self.api.status_get()
         while self.api.status_get() is None:
@@ -413,8 +414,6 @@ class RobotAdapterMiR:
                 self.node.get_logger().info(f'[{self.name}] Stop requested from RMF!')
                 self.request_stop(mission)
                 self.mission = None
-        # Before replan, let's make sure the robot footprint is set correctly
-        self.api.update_footprint()
 
     @parallel
     def request_stop(self, mission: MissionHandle):

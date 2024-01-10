@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import yaml
+import json
 import nudged
 import argparse
 import time
@@ -117,7 +118,7 @@ class FleetAdapterMiR:
         rclpy.shutdown()
 
 
-def create_fleet(fleet_config, config_yaml, cmd_node) -> FleetAdapterMiR:
+def create_fleet(fleet_config, config_yaml, cmd_node, rmf_missions) -> FleetAdapterMiR:
     """Create RMF Adapter and fleet handle"""
     for level, coords in config_yaml['conversions']['reference_coordinates'].items():
         tf = compute_transforms(level, coords, cmd_node)
@@ -152,6 +153,7 @@ def create_fleet(fleet_config, config_yaml, cmd_node) -> FleetAdapterMiR:
             rmf_config,
             mir_config,
             conversions,
+            rmf_missions,
             fleet_handle,
             fleet_config,
             cmd_node,
@@ -173,7 +175,7 @@ def main(argv=sys.argv):
     args_without_ros = rclpy.utilities.remove_ros_args(argv)
 
     parser = argparse.ArgumentParser(
-        prog="fleet_adapter_mir",
+        prog="cgh_fleet_adapter_mir",
         description="Configure and spin up fleet adapters for MiR 100 robots "
                     "that interface between the "
                     "MiR REST API, ROS2, and rmf_core!")
@@ -181,6 +183,8 @@ def main(argv=sys.argv):
                         help="Input config.yaml file to process")
     parser.add_argument("-n", "--nav_graph", type=str, required=True,
                     help="Path to the nav_graph for this fleet adapter")
+    parser.add_argument("-a", "--actions", type=str, required=False, default='',
+                    help="Path to the RMF mission actions to be created")
     parser.add_argument("-m", "--mock", action='store_true',
                         help="Init a mock adapter instead "
                              "(does not require a schedule node, "
@@ -193,6 +197,7 @@ def main(argv=sys.argv):
 
     config_path = args.config_file
     nav_graph_path = args.nav_graph
+    actions_path = args.actions
 
     fleet_config = rmf_easy.FleetConfiguration.from_config_files(
         config_path, nav_graph_path
@@ -201,6 +206,12 @@ def main(argv=sys.argv):
 
     with open(config_path, 'r') as f:
         config_yaml = yaml.safe_load(f)
+
+    if actions_path == '':
+        rmf_missions = None
+    else:
+        with open(actions_path, 'r') as g:
+            rmf_missions = json.load(g)
 
     dry_run = args.dry_run  # For testing
 
@@ -222,7 +233,7 @@ def main(argv=sys.argv):
     cmd_node = rclpy.node.Node(config_yaml['node_names']['robot_command_handle'])
 
     # Create the fleet, including the robots that are in the config file
-    fleet = create_fleet(fleet_config, config_yaml, cmd_node)
+    fleet = create_fleet(fleet_config, config_yaml, cmd_node, rmf_missions)
 
     # GO!
     fleet.start()

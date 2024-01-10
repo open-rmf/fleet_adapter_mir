@@ -54,13 +54,14 @@ class MirStatus:
 
 
 class MirAPI:
-    def __init__(self, prefix, headers, conversions, timeout=10.0, debug=False):
+    def __init__(self, prefix, headers, conversions, rmf_missions, timeout=10.0, debug=False):
         #HTTP connection
         self.prefix =  prefix
         self.debug = False
         self.headers = headers
         self.timeout = timeout
         self.connected = False
+        self.rmf_missions = rmf_missions
         self.map_conversions = MapConversions(conversions['maps'])
         self.known_missions = {}
         self.known_positions = {}
@@ -68,6 +69,7 @@ class MirAPI:
         self.mission_keys: dict = conversions['missions']
         self.mission_actions: dict = {}
         self.mission_action_types: dict = {}
+        self.footprint_keys: dict = conversions['footprints']
         self.attempt_connection()
 
     def attempt_connection(self):
@@ -84,6 +86,7 @@ class MirAPI:
 
         self.load_missions()
         self.load_maps()
+        self.create_rmf_missions()
 
         move_key = 'move'
         assert move_key in self.mission_keys, (
@@ -158,6 +161,9 @@ class MirAPI:
 
         self.created_by_id = self.me_get()['guid']
 
+        # Set footprints
+        self.footprint = self.footprints_guid_get(self.footprint_keys['robot'])
+        self.update_footprint()
 
     def update_known_positions(self):
         self.known_positions = {}
@@ -176,18 +182,33 @@ class MirAPI:
                     self.positions_guid_get(pos['guid'])
                 )
 
-    def create_rmf_missions(self, rmf_missions: dict):
-        rmf_mission_group_id = 'some_id' #TODO create a group id
-        for mission_name, mission_json in rmf_missions.items():
+    def create_rmf_missions(self):
+        if self.rmf_missions is None:
+            return
+
+        # Retrieve the RMF group id if it already exists
+        mission_groups = self.mission_groups_get()
+        rmf_mission_group_id = None
+        mission_group_name = 'RMF'
+        for group in mission_groups:
+            if group['name'] == mission_group_name:
+                rmf_mission_group_id = group['guid']
+                break
+        # If the RMF mission group doesn't exist, create one
+        if rmf_mission_group_id is None:
+            mission_group = self.mission_groups_post(mission_group_name)
+            rmf_mission_group_id = mission_group['guid']
+
+        # Create RMF missions if they don't exist on the robot
+        for mission_name, mission_json in self.rmf_missions.items():
             if mission_name not in self.known_missions:
                 # Create the relevant mission on MiR
-                mission_id = self.missions_post(mission_name, rmf_mission_group_id)
+                mission = self.missions_post(mission_name, rmf_mission_group_id)
+                self.known_missions[mission['name']] = mission
                 # Fill in mission actions
-                self.create_rmf_mission_actions(mission_name, mission_id, mission_json)
+                self.create_rmf_mission_actions(mission_name, mission['guid'], mission_json)
 
     def create_rmf_mission_actions(self, mission_name: str, mission_id: str, mission_json: list[dict]):
-        mission_actions = []
-
         for action in mission_json:
             # Find schema for action type
             action_type = action.get('action_type')
@@ -209,15 +230,18 @@ class MirAPI:
                 # If the input type is a position, we would need a valid GUID for the value field
                 # Let's find a placeholder position GUID from the list of known positions
                 if param_body['id'] == 'position' or param_body['id'] == 'entry_position':
-                    default_pos = list(self.known_positions.items())[0]['guid']
+                    default_pos = self.positions_get()[0]['guid']
                     param_body['value'] = default_pos
+                # Similarly, if the input type is a marker type, we'll need to find a placeholder
+                # marker type GUID from the list of known marker types
+                if param_body['id'] == 'marker_type':
+                    default_marker = self.docking_offsets_get()[0]['guid']
+                    param_body['value'] = default_marker
 
                 action_body_param.append(param_body)
 
             # Next, add the default parameters that come with this action
             for param in action_type_schema['parameters']:
-                # TODO: skip if this parameter has already been included in the json provided in rmf missions
-                #       e.g. "position" in rmf_move_to_position
                 if param['id'] in id_tracker:
                     continue
                 id_tracker.append(param['id'])
@@ -236,10 +260,8 @@ class MirAPI:
             action_body['action_type'] = action_type
             action_body['priority'] = action.get('priority')
             action_body['parameters'] = action_body_param
-
-            mission_actions.append(action_body)
-
-        action_guid = self.missions_mission_id_actions_post(mission_id, mission_actions)
+            action_body['mission_id'] = mission_id
+            self.missions_mission_id_actions_post(mission_id, action_body)
 
     def navigate(self, position):
         pos_x = round(position[0], 3)
@@ -497,6 +519,8 @@ class MirAPI:
             self.known_maps[map['name']] = map['guid']
 
     def me_get(self):
+        if not self.connected:
+            return
         try:
             response = requests.get(self.prefix + 'users/me', headers=self.headers, timeout=self.timeout)
             if self.debug:
@@ -506,6 +530,17 @@ class MirAPI:
             print(f'HTTP error: {http_err}')
         except Exception as err:
             print(f'Other error: {err}')
+
+    def mission_groups_get(self):
+        if not self.connected:
+            return
+        try:
+            response = requests.get(self.prefix + f'mission_groups', headers = self.headers, timeout=self.timeout)
+            return response.json()
+        except HTTPError as http_err:
+            print(f"HTTP error: {http_err}")
+        except Exception as err:
+            print(f"Other here error: {err}")
 
     def actions_get(self):
         if not self.connected:
@@ -602,7 +637,7 @@ class MirAPI:
         except Exception as err:
             print(f"Other here error: {err}")
 
-    def missions_mission_id_actions_post(self,mission_id,body):
+    def missions_mission_id_actions_post(self, mission_id, body):
         if not self.connected:
             return
         try:
@@ -630,11 +665,35 @@ class MirAPI:
         except Exception as err:
             print(f"Other error: {err}")
 
-    def missions_post(self, mission):
+    def mission_groups_post(self, group_name):
         if not self.connected:
             return
+        data = {
+            'name': group_name,
+            'priority': 0,
+            'feature': 'default',
+            'icon': ''
+        }
         try:
-            response = requests.post(self.prefix + 'missions' , headers = self.headers, data=mission, timeout = self.timeout)
+            response = requests.post(self.prefix + 'mission_groups' , headers = self.headers, data=json.dumps(data), timeout = self.timeout)
+            if self.debug:
+                print(f"Response: {response.json()}")
+            return response.json()
+        except HTTPError as http_err:
+            print(f"HTTP error: {http_err}")
+        except Exception as err:
+            print(f"Other error: {err}")
+
+    def missions_post(self, mission, mission_group_id):
+        if not self.connected:
+            return
+        data = {
+            'name': mission,
+            'hidden': False,
+            'group_id': mission_group_id
+        }
+        try:
+            response = requests.post(self.prefix + 'missions' , headers = self.headers, data=json.dumps(data), timeout = self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -748,6 +807,52 @@ class MirAPI:
             print(f"Other  error: {err}")
             return []
 
+    def docking_offsets_get(self):
+        if not self.connected:
+            return
+        try:
+            response = requests.get(self.prefix + 'docking_offsets', headers=self.headers, timeout=self.timeout)
+            if self.debug:
+                print(f"Response: {response.json()}")
+            return response.json()
+        except HTTPError as http_err:
+            print(f"HTTP error: {http_err}")
+        except Exception as err:
+            print(f"Other error: {err}")
+
+    def docking_offsets_guid_get(self, guid: str):
+        if not self.connected:
+            return
+        try:
+            response = requests.get(self.prefix + f'docking_offsets/{guid}', headers=self.headers, timeout=self.timeout)
+            if self.debug:
+                print(f"Response: {response.json()}")
+            return response.json()
+        except HTTPError as http_err:
+            print(f"HTTP error: {http_err}")
+        except Exception as err:
+            print(f"Other error: {err}")
+
+    def footprints_get(self):
+        if not self.connected:
+            return
+        try:
+            response = requests.get(self.prefix + 'footprints', headers=self.headers, timeout=self.timeout)
+            if self.debug:
+                print(f"Response: {response.json()}")
+            return response.json()
+        except HTTPError as http_err:
+            print(f"HTTP error: {http_err}")
+        except Exception as err:
+            print(f"Other error: {err}")
+
+    def footprints_guid_get(self, footprint_name: str):
+        footprints = self.footprints_get()
+        for ft in footprints:
+            if ft['name'] == footprint_name:
+                return ft['guid']
+        return None
+
     def mission_completed(self, mission_queue_id):
         mission_status = self.mission_queue_id_get(mission_queue_id)
         if not mission_status:
@@ -772,4 +877,9 @@ class MirAPI:
         return mission_params
 
     def update_footprint(self):
-        return self.queue_mission_by_name(self.footprint_mission)
+        ft_guid = self.footprint
+        ft_params = self.get_mission_params_with_value(self.footprint_mission,
+                                                       'set_footprint',
+                                                       'footprint',
+                                                       ft_guid)
+        return self.queue_mission_by_name(self.footprint_mission, ft_params)
