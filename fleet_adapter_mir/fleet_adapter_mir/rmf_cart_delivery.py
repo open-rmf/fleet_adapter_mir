@@ -40,8 +40,17 @@ class Dropoff:
 class CartDelivery(MirAction):
     def __init__(
             self,
+            node,
+            name,
+            mir_api,
+            update_handle,
+            actions,
+            missions_json,
+            action_config,
             retrieve_mir_coordinates,  # callback
     ):
+        MirAction.__init__(self, node, name, mir_api, update_handle, actions,
+                           missions_json, action_config)
         self.known_positions = self.api.known_positions
 
         # Delivery related params
@@ -159,7 +168,7 @@ class CartDelivery(MirAction):
 
                 # If the robot is relatively close to the pickup lot, we also consider it to be at pickup
                 # and allow the dock_to_cart mission to position the robot in front of the cart
-                pickup_pose = self.retrieve_mir_coordinates(pickup)
+                pickup_pose = self.retrieve_mir_coordinates(pickup_lot)
                 current_pose = self.api.status_get().state.position
                 if self.dist(pickup_pose, current_pose) < self.action_config['pickup_dist_threshold']:
                     # Delete the ongoing mission

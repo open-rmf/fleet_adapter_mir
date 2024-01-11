@@ -119,6 +119,15 @@ class RobotAdapterMiR:
         self.nav_issue_ticket = None  # We should only have one issue ticket at a time to manage unsuccessful missions
         self.requested_replan = False
         self.replan_counts = 0
+
+        self.fleet_handle = fleet_handle
+        self.update_handle = fleet_handle.add_robot(
+            self.name,
+            status.state,
+            rmf_config,
+            self._make_callbacks(),
+        )
+
         self.plugins = {}
         # Available plugins:
         if 'rmf_cart_delivery' in plugin_config:
@@ -132,14 +141,6 @@ class RobotAdapterMiR:
                 action_config=plugin_config['rmf_cart_delivery'],
                 retrieve_mir_coordinates=self.retrieve_mir_coordinates)
         # To be added on with other plugins
-
-        self.fleet_handle = fleet_handle
-        self.update_handle = fleet_handle.add_robot(
-            self.name,
-            status.state,
-            rmf_config,
-            self._make_callbacks(),
-        )
 
     @property
     def activity(self):
@@ -300,13 +301,6 @@ class RobotAdapterMiR:
         return callbacks
 
     def navigate(self, destination, execution):
-        # If this is a cancellation behavior command, we check if we're meant to ignore it.
-        if self.ignore_action:
-            self.node.get_logger().info(f'Ignoring navigation command, ignore action flag is '
-                                        f'raised after checking latch.')
-            execution.finished()
-            return
-
         # If the nav command coming in is to bring the robot to a charger, but the robot is
         # already charging at the same charger, we ignore this nav command
         status = self.last_known_status
@@ -486,8 +480,7 @@ class RobotAdapterMiR:
     def perform_action(self, category, description, execution):
         for plugin in self.plugins.values():
             if category in plugin.actions:
-                action = self.actions[category]
-                action.perform_action(category, description, execution)
+                plugin.perform_action(category, description, execution)
                 return
         raise NotImplementedError
 

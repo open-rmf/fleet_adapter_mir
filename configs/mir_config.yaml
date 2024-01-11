@@ -36,12 +36,7 @@ conversions:
     move: "rmf_move" # This mission must be predefined
     dock_and_charge: "rmf_dock_and_charge" # This mission must be predefined
     localize: "rmf_localize"
-    # dock_to_cart: "rmf_dock_to_cart"
-    # pickup: "rmf_pickup_cart"
-    # dropoff: "rmf_dropoff_cart"
-    # exit_lot: "rmf_exit_lot"
     go_to: "rmf_move_to_position"
-    # check_footprint: "rmf_update_footprint"
 
   lift_positions:
     lift_1: # Name of lift matching the navigation graph
@@ -83,7 +78,7 @@ rmf_fleet:
     delivery: True
     clean: False
   finishing_request: "charge" # [park, charge, nothing]
-  actions: []
+  actions: ["delivery_pickup", "delivery_dropoff", "dropoff_if_carrying_cart"]
   robots:
     mir_1:
       charger: "Charger_1"
@@ -99,7 +94,7 @@ rmf_fleet:
 
 plugins:
   rmf_cart_delivery:
-    actions: ["delivery_pickup", "delivery_dropoff"]
+    actions: ["delivery_pickup", "delivery_dropoff", "dropoff_if_carrying_cart"]
     missions:
       dock_to_cart: "rmf_dock_to_cart"
       pickup: "rmf_pickup_cart_top"
@@ -109,6 +104,6 @@ plugins:
     footprints:
       robot: "MiR100-200"
       cart: "HostShelfCart800"
-    mission_json: "/path/to/mission/json"
+    missions_json: "/home/some_user/mir_ws/src/fleet_adapter_mir/missions/rmf_cart_missions.json"
     search_timeout: 60
     pickup_dist_threshold: 3.0 # metres
