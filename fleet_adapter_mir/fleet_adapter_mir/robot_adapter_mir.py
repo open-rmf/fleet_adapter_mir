@@ -137,7 +137,7 @@ class RobotAdapterMiR:
                 mir_api=self.api,
                 update_handle=self.update_handle,
                 actions=plugin_config['rmf_cart_delivery']['actions'],
-                missions_json=plugin_config['rmf_cart_delivery']['missions_json'],
+                missions_json=plugin_config['rmf_cart_delivery'].get('missions_json'),
                 action_config=plugin_config['rmf_cart_delivery'],
                 retrieve_mir_coordinates=self.retrieve_mir_coordinates)
         # To be added on with other plugins
@@ -338,13 +338,6 @@ class RobotAdapterMiR:
                 self.mission = MissionHandle(execution)
             self.request_dock(dock_json, self.mission)
             return
-        # TODO(XY): remove this hack and make sure dock missions are passed properly to
-        #           the nav command
-        elif destination.name and 'Charger' in destination.name:
-            self.mission = MissionHandle(execution, charger=destination.name)
-            dock_json = {'description': {'end_waypoint': destination.name},
-                         'mission_name': self.api.dock_and_charge_mission}
-            self.request_dock(dock_json, self.mission)
 
         if destination.inside_lift is not None:
             positions_for_lift = self.lift_positions.get(destination.inside_lift.name)

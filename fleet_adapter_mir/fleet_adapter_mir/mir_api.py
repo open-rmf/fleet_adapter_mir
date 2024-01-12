@@ -227,6 +227,10 @@ class MirAPI:
                 if param_body['id'] == 'marker_type':
                     default_marker = self.docking_offsets_get()[0]['guid']
                     param_body['value'] = default_marker
+                # If the input type is a footprint, we'll also use a placeholder footprint GUID
+                if param_body['id'] == 'footprint':
+                    default_footprint = self.footprints_get()[0]['guid']
+                    param_body['value'] = default_footprint
 
                 action_body_param.append(param_body)
 

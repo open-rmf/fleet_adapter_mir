@@ -96,14 +96,16 @@ plugins:
   rmf_cart_delivery:
     actions: ["delivery_pickup", "delivery_dropoff", "dropoff_if_carrying_cart"]
     missions:
-      dock_to_cart: "rmf_dock_to_cart"
-      pickup: "rmf_pickup_cart_top"
-      dropoff: "rmf_dropoff_cart_top"
-      exit_lot: "rmf_exit_lot"
-      update_footprint: "rmf_update_footprint"
+      dock_to_cart: "rmf_dock_to_cart" # Name of MiR mission for robot to dock under a cart - to be created by fleet adapter upon launch
+      pickup: "rmf_pickup_cart" # Name of MiR mission for robot to latch onto a cart - to be created and filled in by user
+      dropoff: "rmf_dropoff_cart" # Name of MiR mission for robot to unlatch and exit from under a cart - to be created and filled in by user
+      exit_lot: "rmf_exit_lot" # Name of MiR mission for robot to exit from under a cart - to be created by fleet adapter upon launch
+      update_footprint: "rmf_update_footprint" # Name of MiR mission for robot to update the footprint of a robot - to be created by fleet adapter upon launch
     footprints:
-      robot: "MiR100-200"
-      cart: "HostShelfCart800"
-    missions_json: "/home/some_user/mir_ws/src/fleet_adapter_mir/missions/rmf_cart_missions.json"
+      robot: "MiR100-200" # Name of robot footprint stored on MiR
+      cart: "ShelfCart" # Name of cart footprint stored on MiR
+    marker_types:
+      cart: "AsymmetricShelf" # Name of cart marker type
+    missions_json: "/home/some_user/mir_ws/src/fleet_adapter_mir/missions/rmf_cart_missions.json"  # Filepath to RMF cart delivery missions
     search_timeout: 60
     pickup_dist_threshold: 3.0 # metres

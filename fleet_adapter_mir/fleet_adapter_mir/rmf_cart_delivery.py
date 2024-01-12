@@ -69,9 +69,10 @@ class CartDelivery(MirAction):
         self.exit_mission = self.action_config['missions']['exit_lot']
         self.footprint_mission = self.action_config['missions']['update_footprint']
 
-        # Initialize footprints
+        # Initialize footprints and marker types
         self.robot_footprint_guid = self.api.footprints_guid_get(self.action_config['footprints']['robot'])
         self.cart_footprint_guid = self.api.footprints_guid_get(self.action_config['footprints']['cart'])
+        self.cart_marker_type_guid = self.api.docking_offsets_guid_get(self.action_config['marker_types']['cart'])
         self.update_footprint(self.robot_footprint_guid)
 
     def update_action(self):
@@ -185,10 +186,9 @@ class CartDelivery(MirAction):
                 assert self.dock_to_cart_mission is not None
                 current_wp_name = pickup.pickup_lots[0]
                 cart_marker_guid = self.api.known_positions[current_wp_name]['guid']
-                mission_params = self.api.get_mission_params_with_value(self.dock_to_cart_mission,
-                                                                        'docking',
-                                                                        'cart_marker',
-                                                                        cart_marker_guid)
+                cart_marker_param = self.api.get_mission_params_with_value(self.dock_to_cart_mission, 'docking', 'cart_marker', cart_marker_guid)
+                marker_type_param = self.api.get_mission_params_with_value(self.dock_to_cart_mission, 'docking', 'cart_marker_type', self.cart_marker_type_guid)
+                mission_params = cart_marker_param + marker_type_param
                 self.update_footprint(self.robot_footprint_guid)
                 mission_queue_id = self.api.queue_mission_by_name(self.dock_to_cart_mission, mission_params)
                 if not mission_queue_id:
@@ -264,6 +264,8 @@ class CartDelivery(MirAction):
                     # Latch successfully opened, indicate pickup as success
                     pickup.state = PickupState.PICKUP_SUCCESS
                     pickup.latching = False
+                    # Update robot footprint to accommodate the cart size
+                    self.update_footprint(self.cart_footprint_guid)
 
             case PickupState.PICKUP_SUCCESS:
                 # Correct ID, we can end the delivery now
@@ -322,6 +324,8 @@ class CartDelivery(MirAction):
         else:
             if self.api.mission_completed(dropoff.mission_queue_id):
                 self.node.get_logger().info(f'Dropoff mission completed!')
+                # Update robot footprint
+                self.update_footprint(self.robot_footprint_guid)
                 if dropoff.execution is not None:
                     dropoff.execution.finished()
                 return True

@@ -41,8 +41,72 @@ Alternatively, if you want to run everything with full capabilities, (though not
 ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yaml
 ```
 
+If you have not configured the necessary RMF missions on the MiR, you may parse the relevant JSON filepaths when launching the fleet adapter node. On startup, the fleet adapter will create these missions via MiR REST API
+
+```bash
+ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yaml -a ../missions/rmf_missions.json
+```
+
 
 
 ### Configuration
 
 An example configuration file, `mir_config.yaml` has been provided. It has been generously commented, and in the cases where it has not, the parameter names are self-explanatory enough.
+
+
+
+### Setting up building maps
+
+**Chargers**
+
+To use the `rmf_dock_and_charge` mission for charging, you may provide a description similar to the following when adding a `dock_name` to the charging point in your building map yaml/navigation graph:
+```json
+{"description": {"end_waypoint": "charger_name"}, "mission_name": "rmf_dock_and_charge"}
+```
+Where you replace `end_waypoint` with the name of your MiR charger.
+
+
+**MiR positions**
+
+For more accurate robot maneuver, you may wish to send the MiR to a Robot Position instead of using coordinates. For such waypoints, you can provide a `dock_name` with the `rmf_move_to_position` mission specified:
+```json
+{"description": {"end_waypoint": "waypoint_name"}, "mission_name": "rmf_move_to_position"}
+```
+
+
+
+### Plugins
+
+The MiR is capable of performing various types of custom missions and tasks. You can now easily set up plugins offered in this repo instead of writing your own perform action for common use cases.
+
+For cart deliveries from point A to B:
+
+**rmf_cart_delivery**
+
+The `rmf_cart_delivery` plugin allows users to submit pickup and dropoff tasks to MiR integrated with RMF. The workflow of the task is as follows:
+1. RMF will send the robot to the pickup lot
+2. The robot will attempt to dock under a cart in the pickup lot
+3. If the robot successfully docks under the correct cart, it will proceed to deliver it to a dropoff point. If the cart is missing or is not the desired cart, RMF will cancel the task.
+
+Some relevant MiR missions (docking, exit, update footprint) will be automatically created on the MiR on startup. These missions are used to facilitate the pickup and dropoff activities and can be found in the plugin config under `missions`. They are:
+- `rmf_dock_to_cart`: Docks robot under the cart
+- `rmf_exit_lot`: Calls the robot to exit from under the cart
+- `rmf_update_footprint`: Updates the robot footprint
+They are defined and stored in the `rmf_cart_missions.json` file and do not require any further configuration.
+
+However, since there are various types of latching methods available for different MiR models, users will need to set up their custom pickup and dropoff missions on the MiR:
+1. Create 2 missions on the MiR:
+   - `rmf_pickup_cart`: Triggers the robot's latching module to open
+   - `rmf_dropoff_cart`: Triggers the robot's latching module to close and release the cart, then exit from under the cart (relative move -1 metre in the X-direction)
+2. Fill in the MiR mission names in the plugin config under `missions`. The default mission names are `rmf_pickup_cart` and `rmf_dropoff_cart`.
+3. Fill in the footprints and marker types to be used for your specific robot and cart in the plugin config.
+4. In `rmf_cart_delivery.py`, fill in the logic to check whether the robot's latching module is open in blanks marked `# IMPLEMENT YOUR CODE HERE`. Some API calls to check the MiR's PLC registers and IO modules are provided in case you may want to use them.
+
+To submit a cart delivery task, you may use the `dispatch_pickup` task script:
+```bash
+ros2 run fleet_adapter_mir_tasks dispatch_pickup -g go_to_waypoint -p pickup_lot -d dropoff_lot -c some_cart_id
+```
+- `-g`: Takes in an existing waypoint name for the robot to travel to before performing the pickup
+- `-p`: Name of the pickup lot. This name should be identical to the shelf position configured on the MiR.
+- `-d`: Name of the dropoff lot. This name should be identical to the robot or shelf position configured on the MiR.
+- `-c`: Optional cart identifier for the fleet adapter to assess whether the cart is correct for pickup. 

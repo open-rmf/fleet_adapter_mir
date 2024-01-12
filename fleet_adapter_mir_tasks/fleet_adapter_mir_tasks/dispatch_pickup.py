@@ -43,12 +43,14 @@ class TaskRequester(Node):
                             type=str, help='Fleet name')
         parser.add_argument('-R', '--robot', required=False, default='',
                             type=str, help='Robot name')
-        parser.add_argument('-c', '--cart_id', required=True,
+        parser.add_argument('-c', '--cart_id', required=False, default='',
                             type=str, help='Cart identifier')
+        parser.add_argument('-g', '--go_to', required=True,
+                            type=str, help='Waypoint name to go to for pickup')
         parser.add_argument('-p', '--pickup_lot', required=True,
-                            type=str, help='Pick up place')
+                            type=str, help='Name of pickup lot')
         parser.add_argument('-d', '--dropoff_lot', required=True,
-                            type=str, help='Dropoff lot waypoint name')
+                            type=str, help='Name of dropoff lot')
         parser.add_argument('-e', '--emergency_lots', required=False, default='',
                             type=str, nargs='+', help='Emergency waypoints')
         parser.add_argument('-st', '--start_time',
@@ -106,49 +108,47 @@ class TaskRequester(Node):
         description["phases"] = []
         activities = []
 
-        pickup_lot = self.args.pickup_lot
-
-        # on_cancel = []
-        # emergency_lots = []
-        # if self.args.emergency_lots:
-        #     for lot in self.args.emergency_lots:
-        #         emergency_lots.append({"waypoint": lot})
-        #     cancellation_desc = {
-        #         "one_of": emergency_lots,
-        #         "constraints": [{
-        #             "category": "prefer_same_map",
-        #             "description": "some description"
-        #         }]
-        #     }
-        #     cancellation_activities = []
-        #     cancellation_activities.append({"category": "perform_action",
-        #                                     "description": {
-        #                                         "unix_millis_action_duration_estimate": 60000,
-        #                                         "category": "dropoff_if_carrying_cart",
-        #                                         "description": {}
-        #                                         }})
-        #     cancellation_activities.append({"category": "go_to_place",
-        #                                     "description": cancellation_desc})
-        #     cancellation_activities.append({"category": "perform_action",
-        #                                     "description": {
-        #                                         "unix_millis_action_duration_estimate": 60000,
-        #                                         "category": "delivery_dropoff",
-        #                                         "description": {}
-        #                                         }})
-        #     on_cancel.append(
-        #         {"category": "sequence",
-        #         "description": cancellation_activities})
+        on_cancel = []
+        emergency_lots = []
+        if self.args.emergency_lots:
+            for lot in self.args.emergency_lots:
+                emergency_lots.append({"waypoint": lot})
+            cancellation_desc = {
+                "one_of": emergency_lots,
+                "constraints": [{
+                    "category": "prefer_same_map",
+                    "description": "some description"
+                }]
+            }
+            cancellation_activities = []
+            cancellation_activities.append({"category": "perform_action",
+                                            "description": {
+                                                "unix_millis_action_duration_estimate": 60000,
+                                                "category": "dropoff_if_carrying_cart",
+                                                "description": {}
+                                                }})
+            cancellation_activities.append({"category": "go_to_place",
+                                            "description": cancellation_desc})
+            cancellation_activities.append({"category": "perform_action",
+                                            "description": {
+                                                "unix_millis_action_duration_estimate": 60000,
+                                                "category": "delivery_dropoff",
+                                                "description": {}
+                                                }})
+            on_cancel.append(
+                {"category": "sequence",
+                "description": cancellation_activities})
 
         # Add activities
         activities.append({"category": "go_to_place",
-                           "description": pickup_lot})
+                           "description": self.args.go_to})
         activities.append({"category": "perform_action",
                            "description": {
                                "unix_millis_action_duration_estimate": 60000,
                                "category": "delivery_pickup",
                                "description": {
                                     "cart_id": self.args.cart_id,
-                                    "pickup_lot": pickup_lot
+                                    "pickup_lot": self.args.pickup_lot
                                }}})
         activities.append({"category": "go_to_place",
                            "description": self.args.dropoff_lot})
