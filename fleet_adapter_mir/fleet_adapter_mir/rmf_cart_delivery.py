@@ -25,6 +25,7 @@ class PickupState(enum.IntEnum):
 class Pickup:
     state: PickupState
     pickup_lots: list[str] # contains either a single pickup lot or list of pickup lots
+    cart_id: str
     execution: Any
     mission_start_time: float
     mission_queue_id: str
@@ -84,7 +85,8 @@ class CartDelivery(MirAction):
     def perform_action(self, category, description, execution):
         if category == 'delivery_pickup':
             pickup_lot = description.get('pickup_lot')
-            self.cart_pickup(execution, pickup_lot)
+            cart_id = description.get('cart_id')
+            self.cart_pickup(execution, pickup_lot, cart_id)
         elif category == 'delivery_dropoff':
             self.node.get_logger().info(f'Received dropoff request!')
             self.dropoff = Dropoff(execution=execution, mission_queue_id=None)
@@ -97,7 +99,7 @@ class CartDelivery(MirAction):
             pass
         self.cancel_current_task(_cancel_success, _cancel_fail, label)
 
-    def cart_pickup(self, execution, pickup_lot: str):
+    def cart_pickup(self, execution, pickup_lot: str, cart_id: str):
         if self.pickup is not None:
             # If there is an existing pickup, we'll replace it
             if self.pickup.execution is not None and self.pickup.execution.okay():
@@ -119,6 +121,7 @@ class CartDelivery(MirAction):
         self.pickup = Pickup(
             state=PickupState.PICKUP_ALLOCATED,
             pickup_lots=pickup_lots,
+            cart_id=cart_id,
             execution=execution,
             mission_start_time=None,
             mission_queue_id=None,
@@ -232,7 +235,7 @@ class CartDelivery(MirAction):
                 if pickup.mission_start_time is not None:
                     pickup.mission_start_time = None
                 # Check if robot docked under the correct cart
-                cart_check = self.is_correct_cart()
+                cart_check = self.is_correct_cart(pickup.cart_id)
                 if cart_check:
                     # If cart is correct, send pickup mission
                     assert self.pickup_mission is not None
@@ -327,6 +330,7 @@ class CartDelivery(MirAction):
         return
 
     def is_latch_open(self):
+        # Checks if the robot's latch is open and carrying a cart
         # Return True if latch is open, else False
         # ------------------------
         # IMPLEMENT YOUR CODE HERE
@@ -334,14 +338,16 @@ class CartDelivery(MirAction):
         return False
 
     def is_under_cart(self):
+        # Checks if the robot is docked under a cart
         # Return True if robot is under any carts, else False
         # ------------------------
         # IMPLEMENT YOUR CODE HERE
         # ------------------------
         return False
 
-    def is_correct_cart(self):
-        # Return True if cart is correct, False if cart is wrong, None if no cart
+    def is_correct_cart(self, cart_id: str):
+        # Checks if the detected cart identifier matches the target cart_id
+        # Return True if cart is correct, False if cart is wrong, None if no cart detected
         # ------------------------
         # IMPLEMENT YOUR CODE HERE
         # ------------------------
