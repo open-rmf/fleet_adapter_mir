@@ -37,6 +37,19 @@ It uses the `rmf_fleet_adapter_python` bindings, which allows for communication 
 In effect, it interfaces the MiR REST API with `open-rmf`, all without needing to directly use ROS 2 messages to communicate with `open-rmf`!
 
 
+
+### MiR vs. MiR Fleet
+
+Since the MiR robots and MiR Fleet work with different sets of endpoints that serve different functions, both `fleet_adapter_mir` and `fleet_adapter_mirfm` packages are availble to demonstrate RMF integration between MiR100/200/250 and MiR Fleet respectively. In addition, the `mir_fleet_client` package provides additional API needed for the MiR Fleet + RMF integration.
+
+For users who wish to take advantage of MiR Fleet's centralized control system/interface or do not have access to individual MiR robots, the `fleet_adapter_mirfm` package enables RMF integration with MiR Fleet by obtaining individual MiR robot positions and mission GUIDs via the MiR Fleet API and dispatching commands directly to the robots themselves. The current MiR Fleet API does not provide all the necessary endpoints for RMF to perform its task allocation and traffic deconfliction to the full extent, hence the implementation contains direct communication between RMF and MiR robots as well.
+
+As such, it is recommended to implement the fleet adapter directly with individual MiR robots using `fleet_adapter_mir`.
+
+**NOTE**: `fleet_adapter_mirfm` is currently not being actively supported.
+
+
+
 ## Additional Notes
 
 ### Different Units for Angles
