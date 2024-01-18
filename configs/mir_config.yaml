@@ -46,6 +46,8 @@ conversions:
       L2:
         name: "Level_2_Lift"
 
+  marker_types:
+    "charger": "Narrow asymmetric MiR500/1000 shelf"
 
 # RMF Fleet parameters
 rmf_fleet:

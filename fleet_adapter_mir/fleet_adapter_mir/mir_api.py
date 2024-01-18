@@ -69,6 +69,7 @@ class MirAPI:
         self.mission_keys: dict = conversions['missions']
         self.mission_actions: dict = {}
         self.mission_action_types: dict = {}
+        self.marker_type_keys: dict = conversions['marker_types']
         self.attempt_connection()
 
     def attempt_connection(self):
@@ -160,7 +161,7 @@ class MirAPI:
         for pos in self.positions_get():
             if pos['name'] in self.known_positions and \
                     pos['type_id'] == self.known_positions[pos['name']]['type_id'] and \
-                    ('rmf_localize' in pos['name'] or 'cgh_localize' in pos['name']):
+                    ('rmf_localize' in pos['name']):
                 # Delete any duplicate positions
                 self.positions_guid_delete(pos['guid'])
             elif pos['type_id'] == MiRPositionTypes.ROBOT or \
@@ -301,7 +302,10 @@ class MirAPI:
 
         # Check whether we should dock into this end waypoint or not (for charging)
         elif dock_param:
-            mission_params = end_param + dock_param
+            charger_marker_type = self.marker_type_keys['charger']
+            charger_marker_type_guid = self.docking_offsets_guid_get(charger_marker_type)
+            marker_param = self.get_mission_params_with_value(mission_name, 'docking', 'charger_marker_type', charger_marker_type_guid)
+            mission_params = end_param + dock_param + marker_param
         else:
             mission_params = end_param
         return self.queue_mission_by_name(mission_name, mission_params)
@@ -313,10 +317,10 @@ class MirAPI:
             )
 
         if index is not None:
-            position_name = f'cgh_1810_localize_{index}'
+            position_name = f'rmf_localize_{index}'
         else:
             p = estimate
-            position_name = f'cgh_1810_localize_{map}_{p[0]:.2f}_{p[1]:.2f}'
+            position_name = f'rmf_localize_{map}_{p[0]:.2f}_{p[1]:.2f}'
         mir_map = self.map_conversions.rmf_to_mir[map]
         map_id = self.known_maps[mir_map]
         position_guid = self.get_position_guid(position_name, map_id, estimate)
@@ -450,7 +454,7 @@ class MirAPI:
     def positions_delete(self):
         new_known_positions = {}
         for position in self.known_positions:
-            if 'rmf_localize' in position or 'cgh_localize' in position:
+            if 'rmf_localize' in position:
                 pos_guid = self.known_positions[position]
                 try:
                     response = requests.delete(
@@ -814,18 +818,12 @@ class MirAPI:
         except Exception as err:
             print(f"Other error: {err}")
 
-    def docking_offsets_guid_get(self, guid: str):
-        if not self.connected:
-            return
-        try:
-            response = requests.get(self.prefix + f'docking_offsets/{guid}', headers=self.headers, timeout=self.timeout)
-            if self.debug:
-                print(f"Response: {response.json()}")
-            return response.json()
-        except HTTPError as http_err:
-            print(f"HTTP error: {http_err}")
-        except Exception as err:
-            print(f"Other error: {err}")
+    def docking_offsets_guid_get(self, offset_name: str):
+        offsets = self.docking_offsets_get()
+        for offs in offsets:
+            if offs['name'] == offset_name:
+                return offs['guid']
+        return None
 
     def footprints_get(self):
         if not self.connected:

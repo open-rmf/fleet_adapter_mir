@@ -30,8 +30,8 @@
           "id": "marker"
         },
         {
-          "value": "mirconst-guid-0000-0001-marker000001",
-          "input_name": null,
+          "value": "some_placeholder_marker_type_guid",
+          "input_name": "charger_marker_type",
           "id": "marker_type"
         },
         {
