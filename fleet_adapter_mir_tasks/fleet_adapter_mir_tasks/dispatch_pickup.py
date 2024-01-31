@@ -106,8 +106,8 @@ class TaskRequester(Node):
         description = {}  # task_description_Compose.json
         description["category"] = "delivery_pickup"
         description["phases"] = []
-        activities = []
 
+        # Set up cancellation behavior
         on_cancel = []
         emergency_lots = []
         if self.args.emergency_lots:
@@ -121,12 +121,6 @@ class TaskRequester(Node):
                 }]
             }
             cancellation_activities = []
-            cancellation_activities.append({"category": "perform_action",
-                                            "description": {
-                                                "unix_millis_action_duration_estimate": 60000,
-                                                "category": "dropoff_if_carrying_cart",
-                                                "description": {}
-                                                }})
             cancellation_activities.append({"category": "go_to_place",
                                             "description": cancellation_desc})
             cancellation_activities.append({"category": "perform_action",
@@ -139,30 +133,43 @@ class TaskRequester(Node):
                 {"category": "sequence",
                 "description": cancellation_activities})
 
-        # Add activities
-        activities.append({"category": "go_to_place",
-                           "description": self.args.go_to})
-        activities.append({"category": "perform_action",
+        # Pickup activity
+        pickup_activity = []
+        pickup_activity.append({"category": "go_to_place",
+                           "description": self.args.pickup_lot})
+        pickup_activity.append({"category": "perform_action",
                            "description": {
                                "unix_millis_action_duration_estimate": 60000,
-                               "category": "delivery_pickup",
+                               "category": self.args.pickup_type,
                                "description": {
                                     "cart_id": self.args.cart_id,
                                     "pickup_lot": self.args.pickup_lot
                                }}})
-        activities.append({"category": "go_to_place",
-                           "description": self.args.dropoff_lot})
-        activities.append({"category": "perform_action",
-                           "description": {
-                               "unix_millis_action_duration_estimate": 60000,
-                               "category": "delivery_dropoff",
-                               "description": {}
-                               }})
-        # Add activities to phases
         description["phases"].append(
             {"activity": {"category": "sequence",
-                          "description": {"activities": activities}},
+                          "description": {"activities": pickup_activity}}})
+        # GoToPlace activity
+        go_to_place_activity = [{
+            "category": "go_to_place",
+            "description": self.args.dropoff_lot
+            }]
+        description["phases"].append(
+            {"activity": {"category": "sequence",
+                          "description": {"activities": go_to_place_activity}},
             "on_cancel": on_cancel})
+        # Dropoff activity
+        dropoff_activity = [{
+            "category": "perform_action",
+            "description": {
+                "unix_millis_action_duration_estimate": 60000,
+                "category": "delivery_dropoff",
+                "description": {}
+                }
+            }]
+        description["phases"].append(
+            {"activity": {"category": "sequence",
+                          "description": {"activities": dropoff_activity}}})
+        # Consolidate
         request["description"] = description
         payload["request"] = request
         msg.json_msg = json.dumps(payload)

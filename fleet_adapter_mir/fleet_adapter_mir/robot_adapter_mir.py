@@ -201,7 +201,7 @@ class RobotAdapterMiR:
             self.api.status_put(MiRStateCode.READY)
 
     def is_charging(self, status: MirStatus):
-        # TODO(XY): check if we can verify that a robot is charging via mode_id instead
+        # Note: Not the best way to verify that robot is charging but there's currently no other option
         if status.response.get('mission_text') == "Charging... Waiting for new mission...":
             return True
         return False

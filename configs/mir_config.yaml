@@ -80,7 +80,7 @@ rmf_fleet:
     delivery: True
     clean: False
   finishing_request: "charge" # [park, charge, nothing]
-  actions: ["delivery_pickup", "delivery_dropoff", "dropoff_if_carrying_cart"]
+  actions: ["delivery_pickup", "delivery_dropoff"]
   robots:
     mir_1:
       charger: "Charger_1"
@@ -96,7 +96,7 @@ rmf_fleet:
 
 plugins:
   rmf_cart_delivery:
-    actions: ["delivery_pickup", "delivery_dropoff", "dropoff_if_carrying_cart"]
+    actions: ["delivery_pickup", "delivery_dropoff"]
     missions:
       dock_to_cart: "rmf_dock_to_cart" # Name of MiR mission for robot to dock under a cart - to be created by fleet adapter upon launch
       pickup: "rmf_pickup_cart" # Name of MiR mission for robot to latch onto a cart - to be created and filled in by user
