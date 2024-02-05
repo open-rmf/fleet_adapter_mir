@@ -51,12 +51,12 @@
       "priority": 3,
       "parameters": [
         {
-          "value": "00:10:00.000000",
+          "value": null,
           "input_name": null,
           "id": "minimum_time"
         },
         {
-          "value": 25.0,
+          "value": null,
           "input_name": null,
           "id": "minimum_percentage"
         },
