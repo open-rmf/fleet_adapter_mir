@@ -6,19 +6,25 @@ from dataclasses import dataclass
 import requests
 from urllib.error import HTTPError
 from .mir_action import MirAction
-from .mir_api import MirAPI, MirStatus, MiRStateCode
+from ...fleet_adapter_mir.fleet_adapter_mir.mir_api import MirAPI, MirStatus, MiRStateCode
 
 
 class PickupState(enum.IntEnum):
-    PICKUP_ALLOCATED = 0
-    MOVE_REQUESTED = 1
-    AT_PICKUP = 2
-    DOCK_REQUESTED = 3
-    DOCK_COMPLETED = 4
-    PICKUP_REQUESTED = 5
-    PICKUP_SUCCESS = 6
-    WARNING_ALERT_PUBLISHED = 7
+    PICKUP_INITIALIZED = 0
+    PICKUP_ALLOCATED = 1
+    MOVE_REQUESTED = 2
+    AT_PICKUP = 3
+    DOCK_REQUESTED = 4
+    DOCK_COMPLETED = 5
+    PICKUP_REQUESTED = 6
+    PICKUP_SUCCESS = 7
     TASK_CANCELLED = 8
+
+
+class Mission:
+    def __init__(self, queue_id: str, start_time: float):
+        self.queue_id = queue_id
+        self.start_time = start_time
 
 
 @dataclass
@@ -27,15 +33,14 @@ class Pickup:
     pickup_lots: list[str] # contains either a single pickup lot or list of pickup lots
     cart_id: str
     execution: Any
-    mission_start_time: float
-    mission_queue_id: str
+    mission: Mission
     latching: bool
 
 
 @dataclass
 class Dropoff:
     execution: Any
-    mission_queue_id: str
+    mission: Mission
 
 
 class CartDelivery(MirAction):
@@ -45,24 +50,18 @@ class CartDelivery(MirAction):
             name,
             mir_api,
             update_handle,
-            actions,
-            missions_json,
             action_config,
-            retrieve_mir_coordinates,  # callback
+            retrieve_mir_coordinates # Function for plugin to retrieve information about how to convert between rmf and mir coordinates
     ):
-        MirAction.__init__(self, node, name, mir_api, update_handle, actions,
-                           missions_json, action_config)
-        self.known_positions = self.api.known_positions
+        MirAction.__init__(self, node, name, mir_api, update_handle, action_config)
 
-        # Delivery related params
-        self.pickup: Pickup = None
-        self.dropoff: Dropoff = None
+        self.action: Pickup | Dropoff = None
         self.search_timeout = self.action_config.get('search_timeout', 60)  # seconds
 
         # Useful robot adapter callbacks
         self.retrieve_mir_coordinates = retrieve_mir_coordinates
 
-        # Store the mission names to be used later
+        # Store the mission names to be used during the action
         self.dock_to_cart_mission = self.action_config['missions']['dock_to_cart']
         self.pickup_mission = self.action_config['missions']['pickup']
         self.dropoff_mission = self.action_config['missions']['dropoff']
@@ -75,75 +74,61 @@ class CartDelivery(MirAction):
         self.cart_marker_type_guid = self.api.docking_offsets_guid_get(self.action_config['marker_types']['cart'])
         self.update_footprint(self.robot_footprint_guid)
 
-    def update_action(self):
-        if self.pickup is not None:
-            if self.check_pickup(self.pickup):
-                self.pickup = None
-        if self.dropoff is not None:
-            if self.check_dropoff(self.dropoff):
-                self.dropoff = None
-
     def perform_action(self, category, description, execution):
-        if category == 'delivery_pickup':
-            pickup_lot = description.get('pickup_lot')
-            cart_id = description.get('cart_id')
-            self.cart_pickup(execution, pickup_lot, cart_id)
-        elif category == 'delivery_dropoff':
-            self.node.get_logger().info(f'Received dropoff request!')
-            self.dropoff = Dropoff(execution=execution, mission_queue_id=None)
+        # Check that the perform action category matches
+        match category:
+            case 'delivery_pickup':
+                # Check if the robot's latch is currently open
+                if self.is_latch_open():
+                    # Latch is open, unable to perform pickup
+                    self.node.get_logger().info(f'Robot [{self.name}] latch is open, unable to perform pickup, cancelling task...')
+                    self.cancel_task()
+                    return
 
-    def cancel_task(self, label: str = None):
-        def _cancel_success():
-            if self.pickup:
-                self.pickup.state = PickupState.TASK_CANCELLED
-        def _cancel_fail():
-            pass
-        self.cancel_current_task(_cancel_success, _cancel_fail, label)
+                self.node.get_logger().info(f'New pickup requested for robot [{self.name}]')
+                self.pickup = Pickup(
+                    state=PickupState.PICKUP_ALLOCATED,
+                    pickup_lots=[description.get('pickup_lot')],  # TODO(XY): Allow multiple pickups?
+                    cart_id=description.get('cart_id'),
+                    execution=execution,
+                    mission=None,
+                    latching=False
+                )
+            case 'delivery_dropoff':
+                self.node.get_logger().info(f'Received dropoff request!')
+                self.dropoff = Dropoff(
+                    execution=execution,
+                    mission=None
+                )
+            case _:
+                self.node.get_logger().info(f'Invalid perform action [{category}] passed to CartDelivery, ending action.')
+                execution.finished()
 
-    def cart_pickup(self, execution, pickup_lot: str, cart_id: str):
-        if self.pickup is not None:
-            # If there is an existing pickup, we'll replace it
-            if self.pickup.execution is not None and self.pickup.execution.okay():
-                self.pickup.execution.finished()
-            self.pickup = None
+    def update_action(self):
+        # There should not be a pickup and dropoff being performed simultaneously at any given time, since actions are
+        # dispatched sequentially
+        if self.pickup:
+            return self.update_pickup(self.pickup)
+        elif self.dropoff:
+            return self.update_dropoff(self.dropoff)
 
-        # Check if robot's latch is open
-        if self.is_latch_open():
-            # Latch is open, unable to perform pickup
-            self.node.get_logger().info(f'Robot [{self.name}] latch is open, unable to perform pickup, cancelling task...')
-            self.cancel_task()
-            return
+        return False
 
-        self.node.get_logger().info(f'New pickup requested for robot [{self.name}]')
-
-        # TODO(XY): Allow multiple pickups?
-        pickup_lots = [pickup_lot]
-
-        self.pickup = Pickup(
-            state=PickupState.PICKUP_ALLOCATED,
-            pickup_lots=pickup_lots,
-            cart_id=cart_id,
-            execution=execution,
-            mission_start_time=None,
-            mission_queue_id=None,
-            latching=False
-        )
-        return
-
-    def check_pickup(self, pickup: Pickup):
+    def update_pickup(self, pickup: Pickup):
         # If this is a PerformAction pickup, check that the action is underway and valid
         if pickup.execution is not None and not pickup.execution.okay():
-            self.node.get_logger().info(f'[{pickup.type}] action is killed/canceled.')
+            self.node.get_logger().info(f'[delivery_pickup] action is killed/canceled.')
             pickup.state = PickupState.TASK_CANCELLED
 
         # Start state machine check
+        now = self.node.get_clock().now().nanoseconds / 1e9
         self.node.get_logger().debug(f'PickupState: {pickup.state.name}')
         match pickup.state:
             case PickupState.PICKUP_ALLOCATED:
                 # Move to the first pickup place on the list
                 pickup_lot = pickup.pickup_lots[0]
                 self.node.get_logger().info(f'Requested to pickup cart at waypoint {pickup.state.name}')
-                if self.known_positions.get(pickup_lot) is None:
+                if self.api.known_positions.get(pickup_lot) is None:
                     self.node.get_logger().info(f'Pickup Lot does not exist in MiR map, please resubmit.')
                     self.cancel_task()
                     pickup.state = PickupState.TASK_CANCELLED
@@ -151,12 +136,12 @@ class CartDelivery(MirAction):
 
                 # Find the MiR coordinates of this pickup place
                 mir_pose = self.retrieve_mir_coordinates(pickup_lot)
-                pickup.mission_queue_id = self.api.navigate(mir_pose)
+                pickup.mission = Mission(self.api.navigate(mir_pose), now)
                 pickup.state = PickupState.MOVE_REQUESTED
 
             case PickupState.MOVE_REQUESTED:
                 # Make sure that there is an rmf_move mission issued
-                if pickup.mission_queue_id is None:
+                if not pickup.mission:
                     self.node.get_logger().info(f'Robot [{self.name}] is indicated to be at the MOVE_REQUESTED state but '
                                                 f'no mission queue ID stored for this pickup mission! Returning to PICKUP_ALLOCATED state.')
                     pickup.state = PickupState.PICKUP_ALLOCATED
@@ -164,9 +149,9 @@ class CartDelivery(MirAction):
 
                 # Robot has reached the pickup lot
                 pickup_lot = pickup.pickup_lots[0]
-                if self.api.mission_completed(pickup.mission_queue_id):
+                if self.api.mission_completed(pickup.mission.queue_id):
                     self.node.get_logger().info(f'Robot [{self.name}] has reached the pickup waypoint {pickup_lot}')
-                    pickup.mission_queue_id = None
+                    pickup.mission = None
                     pickup.state = PickupState.AT_PICKUP
                     return
 
@@ -176,9 +161,9 @@ class CartDelivery(MirAction):
                 current_pose = self.api.status_get().state.position
                 if self.dist(pickup_pose, current_pose) < self.action_config['pickup_dist_threshold']:
                     # Delete the ongoing mission
-                    self.api.mission_queue_id_delete(pickup.mission_queue_id)
+                    self.api.mission_queue_id_delete(pickup.mission.queue_id)
                     self.node.get_logger().info(f'Robot [{self.name}] is sufficiently near to the pickup waypoint {pickup_lot} for docking')
-                    pickup.mission_queue_id = None
+                    pickup.mission = None
                     pickup.state = PickupState.AT_PICKUP
 
             case PickupState.AT_PICKUP:
@@ -195,45 +180,40 @@ class CartDelivery(MirAction):
                     error_str = f'Mission {self.dock_to_cart_mission} not supported, ignoring'
                     self.node.get_logger().error(error_str)
                     return
-                pickup.mission_queue_id = mission_queue_id
+                pickup.mission = Mission(mission_queue_id, now)
                 pickup.state = PickupState.DOCK_REQUESTED
                 self.node.get_logger().info(f'Dock to cart mission requested with mission queue id {mission_queue_id}')
 
             case PickupState.DOCK_REQUESTED:
                 # Make sure that there is an rmf_dock_to_cart mission issued
-                if pickup.mission_queue_id is None:
+                if not pickup.mission:
                     self.node.get_logger().info(f'Robot [{self.name}] is indicated to be at the DOCK_REQUESTED state but '
                                                 f'no mission queue ID stored for this docking mission! Returning to AT_PICKUP state.')
                     pickup.state = PickupState.AT_PICKUP
                     return
                 # Mission completed, move onto the next state
-                if self.api.mission_completed(pickup.mission_queue_id):
-                    self.node.get_logger().info(f'Robot [{self.name}] dock to cart mission {pickup.mission_queue_id} completed or timed out.')
-                    pickup.mission_queue_id = None
-                    pickup.mission_start_time = None
+                if self.api.mission_completed(pickup.mission.queue_id):
+                    self.node.get_logger().info(f'Robot [{self.name}] dock to cart mission {pickup.mission.queue_id} completed or timed out.')
+                    pickup.mission = None
                     pickup.state = PickupState.DOCK_COMPLETED
                     return
                 # Mission not yet completed, we check the timeout status to decide if we need to publish any alert
-                if pickup.mission_start_time is None:
-                    pickup.mission_start_time = self.node.get_clock().now().nanoseconds / 1e9
-                now = self.node.get_clock().now().nanoseconds / 1e9
-                seconds_passed = now - pickup.mission_start_time
+                seconds_passed = now - pickup.mission.start_time
                 # Publish update every 10 seconds just to monitor
                 if round(seconds_passed)%10 == 0:
                     self.node.get_logger().info(f'{round(seconds_passed)} seconds have passed since pickup mission requested.')
                 # Mission timeout, cart not found
                 if seconds_passed > self.search_timeout:
                     # Delete mission from mir first
-                    self.api.mission_queue_id_delete(pickup.mission_queue_id)
+                    self.api.mission_queue_id_delete(pickup.mission.queue_id)
                     # Regardless of whether the robot completed docking properly, we move to the next state to check
-                    self.node.get_logger().info(f'Robot [{self.name}] dock to cart mission {pickup.mission_queue_id} timed out! '
+                    self.node.get_logger().info(f'Robot [{self.name}] dock to cart mission {pickup.mission.queue_id} timed out! '
                                                 f'Configured search timeout is {self.search_timeout} seconds.')
+                    pickup.mission = None
                     pickup.state = PickupState.DOCK_COMPLETED
                 return
 
             case PickupState.DOCK_COMPLETED:
-                if pickup.mission_start_time is not None:
-                    pickup.mission_start_time = None
                 # Check if robot docked under the correct cart
                 cart_check = self.is_correct_cart(pickup.cart_id)
                 if cart_check:
@@ -244,28 +224,31 @@ class CartDelivery(MirAction):
                         error_str = f'Mission {self.pickup_mission} not supported, ignoring'
                         self.node.get_logger().error(error_str)
                         return
-                    pickup.mission_queue_id = mission_queue_id
-                    pickup.mission_start_time = self.node.get_clock().now().nanoseconds / 1e9
+                    pickup.mission = Mission(mission_queue_id, now)
                     pickup.latching = True
                     self.node.get_logger().info(f'Robot [{self.name}] found the correct cart, pickup mission requested with mission queue id {mission_queue_id}')
                     pickup.state = PickupState.PICKUP_REQUESTED
                 elif cart_check is None:
                     # If cart is missing, cancel this task
                     self.node.get_logger().info(f'Robot [{self.name}] was unable to dock under any carts, please check that cart is present. Cancelling task.')
+                    self.cancel_task()
                     pickup.state = PickupState.TASK_CANCELLED
                 else:
                     # If cart is wrong, cancel this task also but after we exit from the lot
                     self.node.get_logger().info(f'Robot [{self.name}] found the wrong cart, exiting lot and cancelling task.')
                     self.exit_lot()
+                    self.cancel_task()
                     pickup.state = PickupState.TASK_CANCELLED
 
             case PickupState.PICKUP_REQUESTED:
-                if self.is_latch_open():
-                    # Latch successfully opened, indicate pickup as success
+                # Pickup mission completed
+                if self.api.mission_completed(pickup.mission.queue_id):
                     pickup.state = PickupState.PICKUP_SUCCESS
+                    pickup.mission = None
                     pickup.latching = False
                     # Update robot footprint to accommodate the cart size
                     self.update_footprint(self.cart_footprint_guid)
+                # TODO(XY) consider doing a check for whether the latching time exceeds a configurable timeout
 
             case PickupState.PICKUP_SUCCESS:
                 # Correct ID, we can end the delivery now
@@ -278,11 +261,12 @@ class CartDelivery(MirAction):
             case PickupState.TASK_CANCELLED:
                 self.node.get_logger().info(f'Robot [{self.name}] is in pickup cancelled state.')
                 # If some MiR mission is in progress, we abort it unless it is latching
-                if pickup.mission_queue_id is not None and not self.api.mission_completed(pickup.mission_queue_id):
+                if pickup.mission and not self.api.mission_completed(pickup.mission.queue_id):
                     if pickup.latching:
                         self.node.get_logger().info(f'Robot [{self.name}] is performing latching, cancelling task after this action is complete.')
                         return False
-                    self.api.mission_queue_id_delete(pickup.mission_queue_id)
+                    self.api.mission_queue_id_delete(pickup.mission.queue_id)
+                    pickup.mission = None
                 # Clear any errors
                 self.api.clear_error()
                 self.api.status_put(state_id=MiRStateCode.READY)
@@ -292,13 +276,13 @@ class CartDelivery(MirAction):
 
         return False
 
-    def check_dropoff(self, dropoff: Dropoff):
+    def update_dropoff(self, dropoff: Dropoff):
         # Check if action is underway or cancelled
         if dropoff.execution is not None and not dropoff.execution.okay():
             self.node.get_logger().info(f'Dropoff action is killed/canceled')
 
             # If cart release is in progress, we let it finish first
-            if dropoff.mission_queue_id is not None and not self.api.mission_completed(dropoff.mission_queue_id):
+            if dropoff.mission and not self.api.mission_completed(dropoff.mission.queue_id):
                 return False
 
             # Task is cancelled and cart is done dropping off/mission is not yet queued anyway,
@@ -309,29 +293,39 @@ class CartDelivery(MirAction):
             return True
 
         # No mission queued yet
-        if dropoff.mission_queue_id is None:
+        if dropoff.mission is None:
             assert self.dropoff_mission is not None
             mission_queue_id = self.api.queue_mission_by_name(self.dropoff_mission)
             if not mission_queue_id:
                 error_str = f'Mission {self.dropoff_mission} not supported, ignoring'
                 self.node.get_logger().error(error_str)
                 return True
-            self.node.get_logger().info(f'Mission {self.dropoff_mission} added to queue.')
-            dropoff.mission_queue_id = mission_queue_id
-            self.node.get_logger().info(f'Dropoff mission requested with mission queue id {mission_queue_id}')
+            self.node.get_logger().info(f'Mission {self.dropoff_mission} added to queue for robot [{self.name}].')
+            now = self.node.get_clock().now().nanoseconds / 1e9
+            dropoff.mission = Mission(mission_queue_id,
+                                      now)
+            self.node.get_logger().info(f'[{self.name}] Dropoff mission requested with mission queue id {mission_queue_id}')
 
         # Mission queued, check completion
         else:
-            if self.api.mission_completed(dropoff.mission_queue_id):
-                self.node.get_logger().info(f'Dropoff mission completed!')
+            if self.api.mission_completed(dropoff.mission.queue_id):
+                self.node.get_logger().info(f'[{self.name}] Dropoff mission completed!')
                 # Update robot footprint
                 self.update_footprint(self.robot_footprint_guid)
                 if dropoff.execution is not None:
                     dropoff.execution.finished()
                 return True
             else:
-                self.node.get_logger().info(f'Dropoff mission in progress...')
+                self.node.get_logger().info(f'[{self.name}] Dropoff mission in progress...')
         return
+
+    def cancel_task(self, label: str = None):
+        def _cancel_success():
+            if self.pickup:
+                self.pickup.state = PickupState.TASK_CANCELLED
+        def _cancel_fail():
+            pass
+        self.cancel_current_task(_cancel_success, _cancel_fail, label)
 
     def is_latch_open(self):
         # Checks if the robot's latch is open and carrying a cart

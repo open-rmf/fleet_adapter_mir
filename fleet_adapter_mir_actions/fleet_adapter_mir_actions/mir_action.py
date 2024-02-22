@@ -1,6 +1,6 @@
 
 import json
-from .mir_api import MirAPI, MirStatus, MiRStateCode
+from ...fleet_adapter_mir.fleet_adapter_mir.mir_api import MirAPI, MirStatus, MiRStateCode
 
 
 class MirAction:
@@ -10,31 +10,41 @@ class MirAction:
             name,
             mir_api: MirAPI,
             update_handle,
-            actions: list[str],
-            missions_json: str | None,
             action_config: dict | None,
     ):
         self.node = node
         self.name = name
         self.api = mir_api
         self.update_handle = update_handle
-        self.actions = actions
         self.action_config = action_config
 
+        missions_json = self.action_config.get('missions_json')
         if missions_json:
             with open(missions_json, 'r') as g:
-              action_missions = json.load(g)
+                action_missions = json.load(g)
+
+            # Check if these missions are already created on the robot
+            missions_created = True
+            for mission_name in action_missions.keys():
+                if not mission_name in self.api.known_missions:
+                    missions_created = False
+                    break
+            if missions_created:
+                return
+
             # Create these missions on the robot
             self.api.create_missions(action_missions)
             # Update mission actions stored in MirAPI
             for mission, mission_data in self.api.known_missions.items():
                 self.api.mission_actions[mission] = self.api.missions_mission_id_actions_get(mission_data['guid'])
 
-    def update_action(self):
+    # This will be called whenever an action has begun
+    def perform_action(self, category, description, execution):
         # To be populated in the plugins
         pass
 
-    def perform_action(self, category, description, execution):
+    # This will be called on every update to check on the action's current state
+    def update_action(self):
         # To be populated in the plugins
         pass
 

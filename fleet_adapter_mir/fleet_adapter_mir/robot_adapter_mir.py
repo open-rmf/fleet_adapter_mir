@@ -17,7 +17,7 @@ from .mir_api import MirAPI, MirStatus, MiRStateCode
 from threading import Lock
 
 # Import plugins
-from .rmf_cart_delivery import CartDelivery
+from ...fleet_adapter_mir_actions.fleet_adapter_mir_actions.rmf_cart_delivery import CartDelivery
 
 
 # Parallel processing solution derived from
