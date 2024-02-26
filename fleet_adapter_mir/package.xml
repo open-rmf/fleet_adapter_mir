@@ -9,6 +9,7 @@
   <license>Apache License 2.0</license>
 
   <exec_depend>rmf_fleet_adapter_python</exec_depend>
+  <exec_depend>fleet_adapter_mir_actions</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

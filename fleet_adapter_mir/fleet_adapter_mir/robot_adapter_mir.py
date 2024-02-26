@@ -15,9 +15,9 @@ import rclpy.node as Node
 from rclpy.duration import Duration
 from .mir_api import MirAPI, MirStatus, MiRStateCode
 from threading import Lock
+import importlib
 
-# Import plugins
-from ...fleet_adapter_mir_actions.fleet_adapter_mir_actions.rmf_cart_delivery import CartDelivery
+from fleet_adapter_mir_actions.fleet_adapter_mir_actions.mir_action import MirAction
 
 
 # Parallel processing solution derived from
@@ -128,19 +128,8 @@ class RobotAdapterMiR:
             self._make_callbacks(),
         )
 
-        self.plugins = {}
-        # Available plugins:
-        if 'rmf_cart_delivery' in plugin_config:
-            self.plugins['rmf_cart_delivery'] = CartDelivery(
-                node=node,
-                name=name,
-                mir_api=self.api,
-                update_handle=self.update_handle,
-                actions=plugin_config['rmf_cart_delivery']['actions'],
-                missions_json=plugin_config['rmf_cart_delivery'].get('missions_json'),
-                action_config=plugin_config['rmf_cart_delivery'],
-                retrieve_mir_coordinates=self.retrieve_mir_coordinates)
-        # To be added on with other plugins
+        self.current_action: MirAction = None  # Tracks the current ongoing action
+        self.plugin_config = plugin_config  # Stores all the configured plugin action configs
 
     @property
     def activity(self):
@@ -191,8 +180,11 @@ class RobotAdapterMiR:
             self.update_rmf_finished(mission)
 
         # PerformAction related checks
-        for plugin in self.plugins.values():
-            plugin.update_action()
+        if self.current_action:
+            if self.current_action.update_action():
+                # This means that the action has ended, we can clear the current action object
+                self.node.get_logger().info(f'Robot [{self.name}] has completed its current action.')
+                self.current_action = None
 
         # Clear error on updates
         if status is not None and 'errors' in status.response and len(status.response['errors']) > 0:
@@ -471,19 +463,33 @@ class RobotAdapterMiR:
         mission.set_mission_queue_id(mission_queue_id)
 
     def perform_action(self, category, description, execution):
-        for plugin in self.plugins.values():
-            if category in plugin.actions:
-                plugin.perform_action(category, description, execution)
-                return
-        raise NotImplementedError
+        if self.current_action:
+            # Should not reach here, but we log an error anyway
+            self.node.get_logger().info(f'Robot is busy with another perform action! Ignoring new action [{category}]')
+            execution.finished()
+            return
 
-    def retrieve_mir_coordinates(self, waypoint_name: str):
-        transform = self.fleet_config.transformations_to_robot_coordinates
-        transform_current_map = transform.get(self.current_map)
-        rmf_pose = self.fleet_config.graph.find_waypoint(waypoint_name).location
-        new_rmf_pose = np.array([rmf_pose[0], rmf_pose[1], 0.0])
-        mir_pose = transform_current_map.apply(new_rmf_pose)
-        return mir_pose
+        for plugin_name, config in self.plugin_config.items():
+            actions = config['actions']
+            if category in actions:
+                # Import relevant plugin
+                plugin = importlib.import_module(plugin_name, 'fleet_adapter_mir_actions')
+                # Create the relevant MirAction
+                action_obj = plugin.ActionFactory().make_action(self.node,
+                                                                self.name,
+                                                                self.api,
+                                                                self.update_handle,
+                                                                self.fleet_config,
+                                                                config)
+                # Begin performing the plugin action
+                action_obj.perform_action(category, description, execution)
+                # Keep track of the current action
+                self.current_action = action_obj
+                return
+
+        # No relevant perform action found
+        self.node.get_logger().info(f'Perform action [{category}] was not configured for this fleet')
+        raise NotImplementedError
 
     def dist(self, A, B):
         assert(len(A) > 1)

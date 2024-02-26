@@ -1,12 +1,13 @@
 import math
 from icecream import ic
 import enum
+import numpy as np
 from typing import Any
 from dataclasses import dataclass
 import requests
 from urllib.error import HTTPError
-from .mir_action import MirAction
-from ...fleet_adapter_mir.fleet_adapter_mir.mir_api import MirAPI, MirStatus, MiRStateCode
+from .mir_action import MirAction, MirActionFactory
+from fleet_adapter_mir.fleet_adapter_mir.mir_api import MirAPI, MirStatus, MiRStateCode
 
 
 class PickupState(enum.IntEnum):
@@ -43,6 +44,17 @@ class Dropoff:
     mission: Mission
 
 
+class ActionFactory(MirActionFactory):
+    def make_action(self,
+                    node,
+                    name,
+                    mir_api,
+                    update_handle,
+                    fleet_config,
+                    action_config) -> MirAction:
+        return CartDelivery(node, name, mir_api, update_handle, fleet_config, action_config)
+
+
 class CartDelivery(MirAction):
     def __init__(
             self,
@@ -50,16 +62,14 @@ class CartDelivery(MirAction):
             name,
             mir_api,
             update_handle,
-            action_config,
-            retrieve_mir_coordinates # Function for plugin to retrieve information about how to convert between rmf and mir coordinates
-    ):
-        MirAction.__init__(self, node, name, mir_api, update_handle, action_config)
+            fleet_config,
+            action_config
+        ):
+        MirAction.__init__(self, node, name, mir_api, update_handle, fleet_config, action_config)
 
-        self.action: Pickup | Dropoff = None
+        self.pickup: Pickup = None
+        self.dropoff: Dropoff = None
         self.search_timeout = self.action_config.get('search_timeout', 60)  # seconds
-
-        # Useful robot adapter callbacks
-        self.retrieve_mir_coordinates = retrieve_mir_coordinates
 
         # Store the mission names to be used during the action
         self.dock_to_cart_mission = self.action_config['missions']['dock_to_cart']
@@ -378,6 +388,14 @@ class CartDelivery(MirAction):
                                                            'footprint',
                                                            ft_guid)
         return self.api.queue_mission_by_name(self.footprint_mission, ft_params)
+
+    def retrieve_mir_coordinates(self, waypoint_name: str):
+        transform = self.fleet_config.transformations_to_robot_coordinates
+        transform_current_map = transform.get(self.current_map)
+        rmf_pose = self.fleet_config.graph.find_waypoint(waypoint_name).location
+        new_rmf_pose = np.array([rmf_pose[0], rmf_pose[1], 0.0])
+        mir_pose = transform_current_map.apply(new_rmf_pose)
+        return mir_pose
 
     def dist(self, A, B):
         assert(len(A) > 1)
