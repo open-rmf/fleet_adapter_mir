@@ -27,8 +27,8 @@ class MiRStateCode(enum.IntEnum):
 class MiRPositionTypes(enum.IntEnum):
     ROBOT = 0
     SHELF = 5
-    CHARGING_STATION = 7
-    CHARGING_STATION_ENTRY = 8
+    CHARGING_STATION = 20
+    CHARGING_STATION_ENTRY = 21
     CART = 22
     LIFT = 25
     LIFT_ENTRY = 26
