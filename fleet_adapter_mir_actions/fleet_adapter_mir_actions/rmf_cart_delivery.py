@@ -6,7 +6,7 @@ from typing import Any
 from dataclasses import dataclass
 import requests
 from urllib.error import HTTPError
-from .mir_action import MirAction, MirActionFactory
+from fleet_adapter_mir.fleet_adapter_mir.mir_action import MirAction, MirActionFactory
 from fleet_adapter_mir.fleet_adapter_mir.mir_api import MirAPI, MirStatus, MiRStateCode
 
 

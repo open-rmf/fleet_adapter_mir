@@ -17,7 +17,7 @@ from .mir_api import MirAPI, MirStatus, MiRStateCode
 from threading import Lock
 import importlib
 
-# from fleet_adapter_mir_actions.fleet_adapter_mir_actions.mir_action import MirAction
+from .mir_action import MirAction
 
 
 # Parallel processing solution derived from
@@ -127,9 +127,8 @@ class RobotAdapterMiR:
             rmf_config,
             self._make_callbacks(),
         )
-    
-        # TODO(XY): move MirAction into this package
-        self.current_action = None  # Tracks the current ongoing action
+
+        self.current_action: MirAction = None  # Tracks the current ongoing action
         self.plugin_config = plugin_config  # Stores all the configured plugin action configs
 
     @property

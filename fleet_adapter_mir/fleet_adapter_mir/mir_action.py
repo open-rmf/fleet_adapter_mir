@@ -5,7 +5,7 @@ from typing import Callable
 import rclpy
 import rclpy.node as Node
 import rmf_adapter.easy_full_control as rmf_easy
-from fleet_adapter_mir.fleet_adapter_mir.mir_api import MirAPI
+from .mir_api import MirAPI
 
 
 class MirAction(ABC):
@@ -63,8 +63,8 @@ class MirAction(ABC):
         ...
 
     def cancel_current_task(self,
-                            cancel_success: Callable((), None),
-                            cancel_fail: Callable((), None),
+                            cancel_success: Callable[[], None],
+                            cancel_fail: Callable[[], None],
                             label: str = None):
         current_task_id = self.update_handle.more().current_task_id()
         self.node.get_logger().info(f'Cancel task requested for [{current_task_id}]')
