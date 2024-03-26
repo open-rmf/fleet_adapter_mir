@@ -8,6 +8,7 @@ import time
 import threading
 from pprint import pprint
 from functools import partial
+from icecream import ic
 
 import rclpy
 import rclpy.node
@@ -54,29 +55,34 @@ def sanitise_dict(dictionary, inplace=False, recursive=False):
 
 
 def compute_transforms(level, coords, node=None):
-    # rmf_coords = coords['rmf']
-    # mir_coords = coords['mir']
-    # tf = nudged.estimate(rmf_coords, mir_coords)
-    # if node:
-    #     mse = nudged.estimate_error(tf, rmf_coords, mir_coords)
-    #     node.get_logger().info(
-    #         f"Transformation error estimate for {level}: {mse}"
-    #     )
-    rotation = coords['rotation']
-    scale = coords['scale']
-    translation = coords['translation']
-    # ic(tf.get_rotation())
-    # ic(tf.get_scale())
-    # ic(tf.get_translation())
+    if 'rmf' in coords:
+        rmf_coords = coords['rmf']
+        mir_coords = coords['mir']
+        tf = nudged.estimate(rmf_coords, mir_coords)
+        if node:
+            mse = nudged.estimate_error(tf, rmf_coords, mir_coords)
+            node.get_logger().info(
+                f"Transformation error estimate for {level}: {mse}"
+            )
+        ic(tf.get_rotation())
+        ic(tf.get_scale())
+        ic(tf.get_translation())
 
-    return Transformation(
-        rotation,
-        scale,
-        translation
-        # tf.get_rotation(),
-        # tf.get_scale(),
-        # tf.get_translation()
-    )
+        return Transformation(
+            tf.get_rotation(),
+            tf.get_scale(),
+            tf.get_translation()
+        )
+    elif 'rotation' in coords:
+        rotation = coords['rotation']
+        scale = coords['scale']
+        translation = coords['translation']
+
+        return Transformation(
+            rotation,
+            scale,
+            translation
+        )
 
 
 class FleetAdapterMiR:
