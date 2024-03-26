@@ -89,11 +89,10 @@ class RobotAdapterMiR:
             'Content-Type': mir_config['user'],
             'Authorization': mir_config['password'],
         }
-        self.api: MirAPI = MirAPI(prefix, headers, conversions, rmf_missions)
+        self.api: MirAPI = MirAPI(prefix, headers, conversions, rmf_missions, mock=mir_config.get('mock', False))
 
         status = self.api.status_get()
         while self.api.status_get() is None:
-            status = self.api.status_get()
             time.sleep(0.1)
         self.last_known_status: MirStatus = status
         self.current_map = status.state.map

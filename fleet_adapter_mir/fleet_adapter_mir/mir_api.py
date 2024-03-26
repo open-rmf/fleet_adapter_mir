@@ -54,10 +54,11 @@ class MirStatus:
 
 
 class MirAPI:
-    def __init__(self, prefix, headers, conversions, rmf_missions, timeout=10.0, debug=False):
+    def __init__(self, prefix, headers, conversions, rmf_missions, timeout=10.0, debug=False, mock=False):
         #HTTP connection
         self.prefix =  prefix
-        self.debug = False
+        self.debug = debug
+        self.mock = mock
         self.headers = headers
         self.timeout = timeout
         self.connected = False
@@ -83,6 +84,9 @@ class MirAPI:
             return
 
         self.connected = True
+
+        if self.mock:
+            return
 
         self.load_missions()
         self.load_maps()
@@ -157,6 +161,8 @@ class MirAPI:
         self.created_by_id = self.me_get()['guid']
 
     def update_known_positions(self):
+        if self.mock:
+            return
         self.known_positions = {}
         for pos in self.positions_get():
             if pos['name'] in self.known_positions and \
@@ -492,6 +498,8 @@ class MirAPI:
                 return None
             map_id = response.json()['map_id']
             map_name = None
+            if self.mock:
+                self.known_maps = self.maps_get()
             for mname, mid in self.known_maps.items():
                 if mid == map_id:
                     map_name = mname

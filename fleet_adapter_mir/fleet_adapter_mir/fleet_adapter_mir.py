@@ -54,20 +54,28 @@ def sanitise_dict(dictionary, inplace=False, recursive=False):
 
 
 def compute_transforms(level, coords, node=None):
-    """Get transforms between RMF and MIR coordinates."""
-    rmf_coords = coords['rmf']
-    mir_coords = coords['mir']
-    tf = nudged.estimate(rmf_coords, mir_coords)
-    if node:
-        mse = nudged.estimate_error(tf, rmf_coords, mir_coords)
-        node.get_logger().info(
-            f"Transformation error estimate for {level}: {mse}"
-        )
+    # rmf_coords = coords['rmf']
+    # mir_coords = coords['mir']
+    # tf = nudged.estimate(rmf_coords, mir_coords)
+    # if node:
+    #     mse = nudged.estimate_error(tf, rmf_coords, mir_coords)
+    #     node.get_logger().info(
+    #         f"Transformation error estimate for {level}: {mse}"
+    #     )
+    rotation = coords['rotation']
+    scale = coords['scale']
+    translation = coords['translation']
+    # ic(tf.get_rotation())
+    # ic(tf.get_scale())
+    # ic(tf.get_translation())
 
     return Transformation(
-        tf.get_rotation(),
-        tf.get_scale(),
-        tf.get_translation()
+        rotation,
+        scale,
+        translation
+        # tf.get_rotation(),
+        # tf.get_scale(),
+        # tf.get_translation()
     )
 
 
