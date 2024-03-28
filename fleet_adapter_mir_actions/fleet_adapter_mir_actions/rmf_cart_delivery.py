@@ -6,8 +6,8 @@ from typing import Any
 from dataclasses import dataclass
 import requests
 from urllib.error import HTTPError
-from fleet_adapter_mir.fleet_adapter_mir.mir_action import MirAction, MirActionFactory
-from fleet_adapter_mir.fleet_adapter_mir.mir_api import MirAPI, MirStatus, MiRStateCode
+from fleet_adapter_mir_actions.mir_action import MirAction, MirActionFactory
+from fleet_adapter_mir.mir_api import MirAPI, MirStatus, MiRStateCode
 
 
 class PickupState(enum.IntEnum):
@@ -97,7 +97,7 @@ class CartDelivery(MirAction):
 
                 self.node.get_logger().info(f'New pickup requested for robot [{self.name}]')
                 self.pickup = Pickup(
-                    state=PickupState.PICKUP_ALLOCATED,
+                    state=PickupState.AT_PICKUP,
                     pickup_lots=[description.get('pickup_lot')],  # TODO(XY): Allow multiple pickups?
                     cart_id=description.get('cart_id'),
                     execution=execution,
@@ -134,48 +134,6 @@ class CartDelivery(MirAction):
         now = self.node.get_clock().now().nanoseconds / 1e9
         self.node.get_logger().debug(f'PickupState: {pickup.state.name}')
         match pickup.state:
-            case PickupState.PICKUP_ALLOCATED:
-                # Move to the first pickup place on the list
-                pickup_lot = pickup.pickup_lots[0]
-                self.node.get_logger().info(f'Requested to pickup cart at waypoint {pickup.state.name}')
-                if self.api.known_positions.get(pickup_lot) is None:
-                    self.node.get_logger().info(f'Pickup Lot does not exist in MiR map, please resubmit.')
-                    self.cancel_task()
-                    pickup.state = PickupState.TASK_CANCELLED
-                    return
-
-                # Find the MiR coordinates of this pickup place
-                mir_pose = self.retrieve_mir_coordinates(pickup_lot)
-                pickup.mission = Mission(self.api.navigate(mir_pose), now)
-                pickup.state = PickupState.MOVE_REQUESTED
-
-            case PickupState.MOVE_REQUESTED:
-                # Make sure that there is an rmf_move mission issued
-                if not pickup.mission:
-                    self.node.get_logger().info(f'Robot [{self.name}] is indicated to be at the MOVE_REQUESTED state but '
-                                                f'no mission queue ID stored for this pickup mission! Returning to PICKUP_ALLOCATED state.')
-                    pickup.state = PickupState.PICKUP_ALLOCATED
-                    return
-
-                # Robot has reached the pickup lot
-                pickup_lot = pickup.pickup_lots[0]
-                if self.api.mission_completed(pickup.mission.queue_id):
-                    self.node.get_logger().info(f'Robot [{self.name}] has reached the pickup waypoint {pickup_lot}')
-                    pickup.mission = None
-                    pickup.state = PickupState.AT_PICKUP
-                    return
-
-                # If the robot is relatively close to the pickup lot, we also consider it to be at pickup
-                # and allow the dock_to_cart mission to position the robot in front of the cart
-                pickup_pose = self.retrieve_mir_coordinates(pickup_lot)
-                current_pose = self.api.status_get().state.position
-                if self.dist(pickup_pose, current_pose) < self.action_config['pickup_dist_threshold']:
-                    # Delete the ongoing mission
-                    self.api.mission_queue_id_delete(pickup.mission.queue_id)
-                    self.node.get_logger().info(f'Robot [{self.name}] is sufficiently near to the pickup waypoint {pickup_lot} for docking')
-                    pickup.mission = None
-                    pickup.state = PickupState.AT_PICKUP
-
             case PickupState.AT_PICKUP:
                 # Send rmf_dock_to_cart mission
                 assert self.dock_to_cart_mission is not None

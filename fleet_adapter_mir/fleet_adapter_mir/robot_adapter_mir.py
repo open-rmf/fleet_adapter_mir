@@ -17,8 +17,6 @@ from .mir_api import MirAPI, MirStatus, MiRStateCode
 from threading import Lock
 import importlib
 
-from .mir_action import MirAction
-
 
 # Parallel processing solution derived from
 # https://stackoverflow.com/a/59385935
@@ -128,7 +126,7 @@ class RobotAdapterMiR:
             self._make_callbacks(),
         )
 
-        self.current_action: MirAction = None  # Tracks the current ongoing action
+        self.current_action = None  # Tracks the current ongoing action
         self.plugin_config = plugin_config  # Stores all the configured plugin action configs
 
     @property
@@ -326,8 +324,13 @@ class RobotAdapterMiR:
             dock_json = json.loads(destination.dock)
             if dock_json.get('mission_name') == self.api.dock_and_charge_mission:
                 self.mission = MissionHandle(execution, charger=destination.name)
+                # Clear the mission queue before requesting dock and charge
+                self.node.get_logger().info(f'Clearing mission queue for [{self.name}] before submitting a dock_and_charge mission.')
+                self.api.mission_queue_delete()
             else:
                 self.mission = MissionHandle(execution)
+            mission_name = dock_json.get('mission_name')
+            self.node.get_logger().info(f'Requesting [{mission_name}] mission for [{self.name}].')
             self.request_dock(dock_json, self.mission)
             return
 
@@ -473,7 +476,7 @@ class RobotAdapterMiR:
             actions = config['actions']
             if category in actions:
                 # Import relevant plugin
-                plugin = importlib.import_module(plugin_name, 'fleet_adapter_mir_actions')
+                plugin = importlib.import_module(f'fleet_adapter_mir_actions.{plugin_name}')
                 # Create the relevant MirAction
                 action_obj = plugin.ActionFactory().make_action(self.node,
                                                                 self.name,

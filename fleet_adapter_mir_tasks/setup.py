@@ -19,7 +19,7 @@ setup(
     license='Apache License 2.0',
     entry_points={
         'console_scripts': [
-            'dispatch_pickup = fleet_adapter_mir_tasks.dispatch_pickup:main'
+            'dispatch_delivery = fleet_adapter_mir_tasks.dispatch_delivery:main'
         ],
     },
 )

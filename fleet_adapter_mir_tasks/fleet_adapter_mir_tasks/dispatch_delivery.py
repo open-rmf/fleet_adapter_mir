@@ -104,61 +104,38 @@ class TaskRequester(Node):
 
         # Define task request description with phases
         description = {}  # task_description_Compose.json
-        description["category"] = "delivery_pickup"
+        description["category"] = "rmf_cart_delivery"
         description["phases"] = []
 
-        # Set up cancellation behavior
-        on_cancel = []
-        emergency_lots = []
-        if self.args.emergency_lots:
-            for lot in self.args.emergency_lots:
-                emergency_lots.append({"waypoint": lot})
-            cancellation_desc = {
-                "one_of": emergency_lots,
-                "constraints": [{
-                    "category": "prefer_same_map",
-                    "description": "some description"
-                }]
-            }
-            cancellation_activities = []
-            cancellation_activities.append({"category": "go_to_place",
-                                            "description": cancellation_desc})
-            cancellation_activities.append({"category": "perform_action",
-                                            "description": {
-                                                "unix_millis_action_duration_estimate": 60000,
-                                                "category": "delivery_dropoff",
-                                                "description": {}
-                                                }})
-            on_cancel.append(
-                {"category": "sequence",
-                "description": cancellation_activities})
-
         # Pickup activity
-        pickup_activity = []
-        pickup_activity.append({"category": "go_to_place",
-                           "description": self.args.pickup_lot})
-        pickup_activity.append({"category": "perform_action",
+        go_to_pickup_activity = [{
+            "category": "go_to_place",
+            "description": self.args.go_to
+            }]
+        description["phases"].append(
+            {"activity": {"category": "sequence",
+                          "description": {"activities": go_to_pickup_activity}}})
+        pickup_action_activity = [{"category": "perform_action",
                            "description": {
                                "unix_millis_action_duration_estimate": 60000,
-                               "category": self.args.pickup_type,
+                               "category": 'delivery_pickup',
                                "description": {
                                     "cart_id": self.args.cart_id,
                                     "pickup_lot": self.args.pickup_lot
-                               }}})
+                               }}}]
         description["phases"].append(
             {"activity": {"category": "sequence",
-                          "description": {"activities": pickup_activity}}})
+                          "description": {"activities": pickup_action_activity}}})
         # GoToPlace activity
-        go_to_place_activity = [{
+        go_to_dropoff_activity = [{
             "category": "go_to_place",
             "description": self.args.dropoff_lot
             }]
         description["phases"].append(
             {"activity": {"category": "sequence",
-                          "description": {"activities": go_to_place_activity}},
-            "on_cancel": on_cancel})
+                          "description": {"activities": go_to_dropoff_activity}}})
         # Dropoff activity
-        dropoff_activity = [{
+        dropoff_action_activity = [{
             "category": "perform_action",
             "description": {
                 "unix_millis_action_duration_estimate": 60000,
@@ -168,7 +145,7 @@ class TaskRequester(Node):
             }]
         description["phases"].append(
             {"activity": {"category": "sequence",
-                          "description": {"activities": dropoff_activity}}})
+                          "description": {"activities": dropoff_action_activity}}})
         # Consolidate
         request["description"] = description
         payload["request"] = request

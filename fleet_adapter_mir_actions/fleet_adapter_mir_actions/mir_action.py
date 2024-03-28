@@ -5,7 +5,7 @@ from typing import Callable
 import rclpy
 import rclpy.node as Node
 import rmf_adapter.easy_full_control as rmf_easy
-from .mir_api import MirAPI
+from fleet_adapter_mir.mir_api import MirAPI
 
 
 class MirAction(ABC):
