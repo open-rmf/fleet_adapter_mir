@@ -476,7 +476,8 @@ class RobotAdapterMiR:
             actions = config['actions']
             if category in actions:
                 # Import relevant plugin
-                plugin = importlib.import_module(f'fleet_adapter_mir_actions.{plugin_name}')
+                module = config['module']
+                plugin = importlib.import_module(module)
                 # Create the relevant MirAction
                 action_obj = plugin.ActionFactory().make_action(self.node,
                                                                 self.name,
