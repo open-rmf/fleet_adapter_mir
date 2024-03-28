@@ -51,8 +51,6 @@ class TaskRequester(Node):
                             type=str, help='Name of pickup lot')
         parser.add_argument('-d', '--dropoff_lot', required=True,
                             type=str, help='Name of dropoff lot')
-        parser.add_argument('-e', '--emergency_lots', required=False, default='',
-                            type=str, nargs='+', help='Emergency waypoints')
         parser.add_argument('-st', '--start_time',
                             help='Start time from now in secs, default: 0',
                             type=int, default=0)

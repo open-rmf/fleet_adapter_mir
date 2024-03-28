@@ -27,9 +27,9 @@ conversions:
             [1.0, 1.0],
             [1.0, 0.0]]
 
-  # RMF to MIR map names
   maps:
-    L1: "Level 1" # Map name stored on MiR
+    # "RMF map name": "Map name stored on MiR"
+    L1: "Level 1"
     L2: "Level 2"
 
   missions:
@@ -80,7 +80,7 @@ rmf_fleet:
     delivery: True
     clean: False
   finishing_request: "charge" # [park, charge, nothing]
-  actions: ["delivery_pickup", "delivery_dropoff"]
+  actions: ["rmf_cart_delivery", "delivery_pickup", "delivery_dropoff"]
   robots:
     mir_1:
       charger: "Charger_1"

@@ -59,7 +59,7 @@ An example configuration file, `mir_config.yaml` has been provided. It has been 
 
 **Chargers**
 
-To use the `rmf_dock_and_charge` mission for charging, you may provide a description similar to the following when adding a `dock_name` to the charging point in your building map yaml/navigation graph:
+To use the `rmf_dock_and_charge` mission for charging, use the traffic-editor to set the `dock_name` property of your charging point to a json description like the following:
 ```json
 {"description": {"end_waypoint": "charger_name"}, "mission_name": "rmf_dock_and_charge"}
 ```
@@ -68,11 +68,7 @@ Where you replace `end_waypoint` with the name of your MiR charger.
 
 **MiR positions**
 
-For more accurate robot maneuver, you may wish to send the MiR to a Robot Position instead of using coordinates. For such waypoints, you can provide a `dock_name` with the `rmf_move_to_position` mission specified:
-```json
-{"description": {"end_waypoint": "waypoint_name"}, "mission_name": "rmf_move_to_position"}
-```
-
+Upon launch, the MiR fleet adapter recognizes MiR positions with identical names to RMF waypoints to be the same location. Hence, when a navigation command is submitted for the robot to a specific waypoint, if this waypoint name also exists as a robot position on the MiR, the fleet adapter would send it directly to the MiR position even if the coordinates are different.
 
 
 ### Plugins
@@ -92,6 +88,7 @@ Some relevant MiR missions (docking, exit, update footprint) will be automatical
 - `rmf_dock_to_cart`: Docks robot under the cart
 - `rmf_exit_lot`: Calls the robot to exit from under the cart
 - `rmf_update_footprint`: Updates the robot footprint
+
 They are defined and stored in the `rmf_cart_missions.json` file and do not require any further configuration.
 
 However, since there are various types of latching methods available for different MiR models, users will need to set up their custom pickup and dropoff missions on the MiR:

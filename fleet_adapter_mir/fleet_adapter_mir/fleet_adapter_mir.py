@@ -184,9 +184,10 @@ def main(argv=sys.argv):
     parser.add_argument("-c", "--config_file", type=str, required=True,
                         help="Input config.yaml file to process")
     parser.add_argument("-n", "--nav_graph", type=str, required=True,
-                    help="Path to the nav_graph for this fleet adapter")
-    parser.add_argument("-a", "--actions", type=str, required=False, default='',
-                    help="Path to the RMF mission actions to be created")
+                        help="Path to the nav_graph for this fleet adapter")
+    parser.add_argument("-m", "--rmf_missions", type=str,
+                        required=False, default='',
+                        help="Path to the RMF missions to be created on robot")
     parser.add_argument("-m", "--mock", action='store_true',
                         help="Init a mock adapter instead "
                              "(does not require a schedule node, "
@@ -199,7 +200,7 @@ def main(argv=sys.argv):
 
     config_path = args.config_file
     nav_graph_path = args.nav_graph
-    actions_path = args.actions
+    missions_path = args.rmf_missions
 
     fleet_config = rmf_easy.FleetConfiguration.from_config_files(
         config_path, nav_graph_path
@@ -209,10 +210,10 @@ def main(argv=sys.argv):
     with open(config_path, 'r') as f:
         config_yaml = yaml.safe_load(f)
 
-    if actions_path == '':
+    if missions_path == '':
         rmf_missions = None
     else:
-        with open(actions_path, 'r') as g:
+        with open(missions_path, 'r') as g:
             rmf_missions = json.load(g)
 
     dry_run = args.dry_run  # For testing
