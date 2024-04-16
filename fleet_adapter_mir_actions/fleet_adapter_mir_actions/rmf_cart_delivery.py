@@ -76,13 +76,10 @@ class CartDelivery(MirAction):
         self.pickup_mission = self.action_config['missions']['pickup']
         self.dropoff_mission = self.action_config['missions']['dropoff']
         self.exit_mission = self.action_config['missions']['exit_lot']
-        self.footprint_mission = self.action_config['missions']['update_footprint']
+        self.footprint_mission = self.action_config['missions'].get('update_footprint')  # Optional
 
-        # Initialize footprints and marker types
-        self.robot_footprint_guid = self.api.footprints_guid_get(self.action_config['footprints']['robot'])
-        self.cart_footprint_guid = self.api.footprints_guid_get(self.action_config['footprints']['cart'])
+        # Initialize cart marker type
         self.cart_marker_type_guid = self.api.docking_offsets_guid_get(self.action_config['marker_types']['cart'])
-        self.update_footprint(self.robot_footprint_guid)
 
     def perform_action(self, category, description, execution):
         # Check that the perform action category matches
@@ -138,11 +135,16 @@ class CartDelivery(MirAction):
                 # Send rmf_dock_to_cart mission
                 assert self.dock_to_cart_mission is not None
                 current_wp_name = pickup.pickup_lots[0]
-                cart_marker_guid = self.api.known_positions[current_wp_name]['guid']
+                mir_pos = self.api.known_positions.get(current_wp_name)
+                if not mir_pos:
+                    self.node.get_logger().info(f'No shelf position [{mir_pos}] found on robot [{self.name}], cancelling task')
+                    self.cancel_task()
+                    pickup.state = PickupState.TASK_CANCELLED
+                    return
+                cart_marker_guid = mir_pos['guid']
                 cart_marker_param = self.api.get_mission_params_with_value(self.dock_to_cart_mission, 'docking', 'cart_marker', cart_marker_guid)
                 marker_type_param = self.api.get_mission_params_with_value(self.dock_to_cart_mission, 'docking', 'cart_marker_type', self.cart_marker_type_guid)
                 mission_params = cart_marker_param + marker_type_param
-                self.update_footprint(self.robot_footprint_guid)
                 mission_queue_id = self.api.queue_mission_by_name(self.dock_to_cart_mission, mission_params)
                 if not mission_queue_id:
                     error_str = f'Mission {self.dock_to_cart_mission} not supported, ignoring'
@@ -214,9 +216,6 @@ class CartDelivery(MirAction):
                     pickup.state = PickupState.PICKUP_SUCCESS
                     pickup.mission = None
                     pickup.latching = False
-                    # Update robot footprint to accommodate the cart size
-                    self.update_footprint(self.cart_footprint_guid)
-                # TODO(XY) consider doing a check for whether the latching time exceeds a configurable timeout
 
             case PickupState.PICKUP_SUCCESS:
                 # Correct ID, we can end the delivery now
@@ -279,7 +278,6 @@ class CartDelivery(MirAction):
             if self.api.mission_completed(dropoff.mission.queue_id):
                 self.node.get_logger().info(f'[{self.name}] Dropoff mission completed!')
                 # Update robot footprint
-                self.update_footprint(self.robot_footprint_guid)
                 if dropoff.execution is not None:
                     dropoff.execution.finished()
                 return True
@@ -317,13 +315,13 @@ class CartDelivery(MirAction):
         # ------------------------
         # IMPLEMENT YOUR CODE HERE
         # ------------------------
-        return None
+        return True
+        # return None
 
     def exit_lot(self):
         if not self.api.connected:
             return None
         # Set footprint to robot footprint before exiting lot
-        self.update_footprint(self.robot_footprint_guid)
         return self.api.queue_mission_by_name(self.exit_mission)
 
     def release_cart(self):
@@ -340,7 +338,10 @@ class CartDelivery(MirAction):
             self.node.get_logger().info(f'Cart detected above robot [{self.name}] during a release call, exiting lot...')
             self.exit_lot()
 
+    # Optional function for updating robot footprint by providing footprint guid
     def update_footprint(self, ft_guid: str):
+        if not self.footprint_mission:
+            return
         ft_params = self.api.get_mission_params_with_value(self.footprint_mission,
                                                            'set_footprint',
                                                            'footprint',
