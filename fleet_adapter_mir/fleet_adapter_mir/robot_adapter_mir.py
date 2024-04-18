@@ -438,9 +438,10 @@ class RobotAdapterMiR:
 
     @parallel
     def request_localize(self, estimate, mission: MissionHandle):
+        retry_count = 10
         count = 0
         mission_queue_id = None
-        while count < self.retries and not mission_queue_id:
+        while count < retry_count and not mission_queue_id:
             count += 1
             try:
                 mission_queue_id = self.api.localize(

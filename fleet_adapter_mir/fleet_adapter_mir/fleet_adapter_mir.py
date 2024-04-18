@@ -55,19 +55,32 @@ def sanitise_dict(dictionary, inplace=False, recursive=False):
 
 def compute_transforms(level, coords, node=None):
     """Get transforms between RMF and MIR coordinates."""
-    rmf_coords = coords['rmf']
-    mir_coords = coords['mir']
-    tf = nudged.estimate(rmf_coords, mir_coords)
-    if node:
-        mse = nudged.estimate_error(tf, rmf_coords, mir_coords)
-        node.get_logger().info(
-            f"Transformation error estimate for {level}: {mse}"
-        )
+    rotation = None
+    scale = None
+    translation = None
+    if 'rmf' in coords:
+        rmf_coords = coords['rmf']
+        mir_coords = coords['mir']
+        tf = nudged.estimate(rmf_coords, mir_coords)
+        if node:
+            mse = nudged.estimate_error(tf, rmf_coords, mir_coords)
+            node.get_logger().info(
+                f"Transformation error estimate for {level}: {mse}"
+            )
+        rotation = tf.get_rotation()
+        scale = tf.get_scale()
+        translation = tf.get_translation()
+    elif 'rotation' in coords:
+        rotation = coords['rotation']
+        scale = coords['scale']
+        translation = coords['translation']
+    else:
+        return None
 
     return Transformation(
-        tf.get_rotation(),
-        tf.get_scale(),
-        tf.get_translation()
+        rotation,
+        scale,
+        translation
     )
 
 
@@ -185,7 +198,7 @@ def main(argv=sys.argv):
                         help="Input config.yaml file to process")
     parser.add_argument("-n", "--nav_graph", type=str, required=True,
                         help="Path to the nav_graph for this fleet adapter")
-    parser.add_argument("-m", "--rmf_missions", type=str,
+    parser.add_argument("-r", "--rmf_missions", type=str,
                         required=False, default='',
                         help="Path to the RMF missions to be created on robot")
     parser.add_argument("-m", "--mock", action='store_true',
