@@ -376,12 +376,36 @@ class RobotAdapterMiR:
         mission_handle: MissionHandle
     ):
         mission_queue_id = None
-        if destination.name:
-            self.node.get_logger().info(f'[{self.name}] is going to MiR position {destination.name}')
-            mission_queue_id = self.api.go_to_known_position(destination.name)
+        retry_count = 10
+        count = 0
+        while count < retry_count and not mission_queue_id:
+            try:
+                if destination.name:
+                    self.node.get_logger().info(f'[{self.name}] is going to MiR position {destination.name}')
+                    mission_queue_id = self.api.go_to_known_position(destination.name)
+                if mission_queue_id is None:
+                    self.node.get_logger().info(f'[{self.name}] is going to MiR coordinates [{destination.position}]')
+                    mission_queue_id = self.api.navigate(destination.position)
+                else:
+                    self.node.get_logger().info(
+                        f'[{self.name}] Move mission cannot be queued'
+                        f'(no mission queue id provided), retrying...'
+                    )
+            except Exception as err:
+                self.node.get_logger().info(
+                    f'[{self.name}] Failed to request robot to move to '
+                    f'destination: {err}. Retrying... ({count})'
+                )
+            count += 1
+            time.sleep(1)
+
         if mission_queue_id is None:
-            self.node.get_logger().info(f'[{self.name}] is going to MiR coordinates [{destination.position}]')
-            mission_queue_id = self.api.navigate(destination.position)
+            self.node.get_logger().info(
+                f'[{self.name}] Failed to request robot to move to destination.'
+                f' Maximum request navigate retries exceeded!')
+            mission_handle.execution.finished()
+            return
+
         mission_handle.set_mission_queue_id(mission_queue_id)
 
     @parallel
