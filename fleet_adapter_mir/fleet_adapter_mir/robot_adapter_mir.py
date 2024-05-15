@@ -375,22 +375,39 @@ class RobotAdapterMiR:
         destination,
         mission_handle: MissionHandle
     ):
+        # Used for exiting while loop early in the event that for whatever
+        # reason the robot starts performing a different mission, while the
+        # original navigation mission is ongoing
+        navigation_mission_identifier = mission_handle.execution.identifier
         mission_queue_id = None
-        retry_count = 10
         count = 0
+        retry_count = 10
         while count < retry_count and not mission_queue_id:
+            if (navigation_mission_identifier !=
+                    mission_handle.execution.identifier):
+                self.node.get_logger().info(
+                    f'[{self.name}] MissionHandle has changed to '
+                    f'{mission_handle.execution.identifier}, interrupting '
+                    f'navigation mission {navigation_mission_identifier}. '
+                    f'Stopping original navigation mission loop.')
+                break
+
             try:
                 if destination.name:
-                    self.node.get_logger().info(f'[{self.name}] is going to MiR position {destination.name}')
-                    mission_queue_id = self.api.go_to_known_position(destination.name)
+                    self.node.get_logger().info(
+                        f'[{self.name}] is going to MiR position '
+                        f'{destination.name}')
+                    mission_queue_id = self.api.go_to_known_position(
+                        destination.name)
                 if mission_queue_id is None:
-                    self.node.get_logger().info(f'[{self.name}] is going to MiR coordinates [{destination.position}]')
+                    self.node.get_logger().info(
+                        f'[{self.name}] is going to MiR coordinates '
+                        f'[{destination.position}]')
                     mission_queue_id = self.api.navigate(destination.position)
                 else:
                     self.node.get_logger().info(
-                        f'[{self.name}] Move mission cannot be queued'
-                        f'(no mission queue id provided), retrying...'
-                    )
+                        f'[{self.name}] Move mission cannot be queued '
+                        f'(no mission queue id provided), retrying...')
             except Exception as err:
                 self.node.get_logger().info(
                     f'[{self.name}] Failed to request robot to move to '
@@ -398,6 +415,16 @@ class RobotAdapterMiR:
                 )
             count += 1
             time.sleep(1)
+
+        if (mission_queue_id is None and
+                navigation_mission_identifier !=
+                mission_handle.execution.identifier):
+            self.node.get_logger().info(
+                f'[{self.name}] Failed to request robot to move to destination.'
+                f' Navigation step {navigation_mission_identifier} interrupted '
+                f'by new mission {mission_handle.execution.identifier}.'
+            )
+            return
 
         if mission_queue_id is None:
             self.node.get_logger().info(
@@ -414,7 +441,56 @@ class RobotAdapterMiR:
         position_name: str,
         mission_handle: MissionHandle
     ):
-        mission_queue_id = self.api.go_to_known_position(position_name)
+        # Used for exiting while loop early in the event that for whatever
+        # reason the robot starts performing a different mission, while the
+        # original navigation mission is ongoing
+        navigation_mission_identifier = mission_handle.execution.identifier
+        mission_queue_id = None
+        count = 0
+        retry_count = 10
+        while count < retry_count and not mission_queue_id:
+            if (navigation_mission_identifier !=
+                    mission_handle.execution.identifier):
+                self.node.get_logger().info(
+                    f'[{self.name}] MissionHandle has changed to '
+                    f'{mission_handle.execution.identifier}, interrupting '
+                    f'navigation mission {navigation_mission_identifier}.'
+                    f' Stopping original navigation mission loop.')
+                break
+
+            try:
+                mission_queue_id = self.api.go_to_known_position(position_name)
+                if mission_queue_id is None:
+                    self.node.get_logger().info(
+                        f'[{self.name}] Move to known positions mission cannot '
+                        f'be queued (no mission queue id provided), retrying...'
+                    )
+            except Exception as err:
+                self.node.get_logger().info(
+                    f'[{self.name}] Failed to request robot to move to known'
+                    f'position: {err}. Retrying... ({count})'
+                )
+            count += 1
+            time.sleep(1)
+
+        if (mission_queue_id is None and
+                navigation_mission_identifier !=
+                mission_handle.execution.identifier):
+            self.node.get_logger().info(
+                f'[{self.name}] Failed to request robot to move to known '
+                f'position. Navigation step {navigation_mission_identifier} '
+                f'interrupted by new mission '
+                f'{mission_handle.execution.identifier}.'
+            )
+            return
+
+        if mission_queue_id is None:
+            self.node.get_logger().info(
+                f'[{self.name}] Failed to request robot to move to known '
+                f'position. Maximum request navigate retries exceeded!')
+            mission_handle.execution.finished()
+            return
+
         mission_handle.set_mission_queue_id(mission_queue_id)
 
 
@@ -426,15 +502,67 @@ class RobotAdapterMiR:
     ):
         if not ('description' in docking_points):
             return
-        self.node.get_logger().info(f'Requested dock mission for [{self.name}]: {docking_points}')
-        end_waypoint = docking_points['description']['end_waypoint']
-        if 'start_waypoint' in docking_points['description']:
-            start_waypoint = docking_points['description']['start_waypoint']
-        else:
-            start_waypoint = None
-        mission_name = docking_points['mission_name']
+        # Used for exiting while loop early in the event that for whatever
+        # reason the robot starts performing a different mission, while the
+        # original navigation mission is ongoing
+        docking_mission_identifier = mission_handle.execution.identifier
+        mission_queue_id = None
+        count = 0
+        retry_count = 10
+        while count < retry_count and not mission_queue_id:
+            if (docking_mission_identifier !=
+                    mission_handle.execution.identifier):
+                self.node.get_logger().info(
+                    f'[{self.name}] MissionHandle has changed to '
+                    f'{mission_handle.execution.identifier}, interrupting '
+                    f'navigation mission {docking_mission_identifier}. '
+                    f'Stopping original docking mission loop.')
+                break
 
-        mission_queue_id = self.api.dock(mission_name, start_waypoint, end_waypoint)
+            try:
+                self.node.get_logger().info(
+                    f'Requested dock mission for [{self.name}]: '
+                    f'{docking_points}')
+                end_waypoint = docking_points['description']['end_waypoint']
+                if 'start_waypoint' in docking_points['description']:
+                    start_waypoint = \
+                        docking_points['description']['start_waypoint']
+                else:
+                    start_waypoint = None
+                mission_name = docking_points['mission_name']
+
+                mission_queue_id = self.api.dock(mission_name,
+                                                start_waypoint,
+                                                end_waypoint)
+                if mission_queue_id is None:
+                    self.node.get_logger().info(
+                        f'[{self.name}] Dock mission cannot be queued '
+                        f'(no mission queue id provided), retrying...')
+            except Exception as err:
+                self.node.get_logger().info(
+                    f'[{self.name}] Failed to request robot to dock to '
+                    f'destination: {err}. Retrying... ({count})'
+                )
+            count += 1
+            time.sleep(1)
+
+        if (mission_queue_id is None and
+                docking_mission_identifier !=
+                mission_handle.execution.identifier):
+            self.node.get_logger().info(
+                f'[{self.name}] Failed to request robot to dock to destination.'
+                f' Docking step {docking_mission_identifier} interrupted '
+                f'by new mission {mission_handle.execution.identifier}.'
+            )
+            return
+
+        if mission_queue_id is None:
+            self.node.get_logger().info(
+                f'[{self.name}] Failed to request robot to dock to destination.'
+                f' Maximum request navigate retries exceeded!')
+            mission_handle.execution.finished()
+            return
+
         mission_handle.set_mission_queue_id(mission_queue_id)
 
     def stop(self, activity):
