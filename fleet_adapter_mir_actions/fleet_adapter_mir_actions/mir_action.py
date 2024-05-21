@@ -65,7 +65,7 @@ class MirAction(ABC):
     def cancel_current_task(self,
                             cancel_success: Callable[[], None],
                             cancel_fail: Callable[[], None],
-                            label: str = None):
+                            label: str = ''):
         current_task_id = self.update_handle.more().current_task_id()
         self.node.get_logger().info(f'Cancel task requested for [{current_task_id}]')
         def _on_cancel(result: bool):

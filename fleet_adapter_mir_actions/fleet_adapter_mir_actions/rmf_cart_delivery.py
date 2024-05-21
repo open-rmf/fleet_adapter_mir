@@ -285,7 +285,7 @@ class CartDelivery(MirAction):
                 self.node.get_logger().info(f'[{self.name}] Dropoff mission in progress...')
         return
 
-    def cancel_task(self, label: str = None):
+    def cancel_task(self, label: str = ''):
         def _cancel_success():
             if self.pickup:
                 self.pickup.state = PickupState.TASK_CANCELLED
