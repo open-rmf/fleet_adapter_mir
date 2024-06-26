@@ -1,9 +1,9 @@
 import math
-from icecream import ic
 import enum
 import numpy as np
 from typing import Any
 from dataclasses import dataclass
+import importlib
 import requests
 from urllib.error import HTTPError
 from fleet_adapter_mir_actions.mir_action import MirAction, MirActionFactory
@@ -80,6 +80,14 @@ class CartDelivery(MirAction):
 
         # Initialize cart marker type
         self.cart_marker_type_guid = self.api.docking_offsets_guid_get(self.action_config['marker_types']['cart'])
+
+        # Import CartDetection module if provided
+        detection_module = self.action_config.get('cart_detection_module')
+        assert (detection_module is not None,
+                'CartDetection module is required for CartDelivery plugin, ' + \
+                'but it is not found!')
+        detection_plugin = importlib.import_module(detection_module)
+        self.cart_detection = detection_plugin.CartDetection(mir_api, action_config)
 
     def perform_action(self, category, description, execution):
         # Check that the perform action category matches
@@ -294,29 +302,13 @@ class CartDelivery(MirAction):
         self.cancel_current_task(_cancel_success, _cancel_fail, label)
 
     def is_latch_open(self):
-        # Checks if the robot's latch is open and carrying a cart
-        # Return True if latch is open, else False
-        # ------------------------
-        # IMPLEMENT YOUR CODE HERE
-        # ------------------------
-        return False
+        return self.cart_detection.is_latch_open()
 
     def is_under_cart(self):
-        # Checks if the robot is docked under a cart
-        # Return True if robot is under any carts, else False
-        # ------------------------
-        # IMPLEMENT YOUR CODE HERE
-        # ------------------------
-        return False
+        return self.cart_detection.is_under_cart()
 
     def is_correct_cart(self, cart_id: str):
-        # Checks if the detected cart identifier matches the target cart_id
-        # Return True if cart is correct, False if cart is wrong, None if no cart detected
-        # ------------------------
-        # IMPLEMENT YOUR CODE HERE
-        # ------------------------
-        return True
-        # return None
+        return self.cart_detection.is_correct_cart(cart_id)
 
     def exit_lot(self):
         if not self.api.connected:
