@@ -114,3 +114,6 @@ plugins:
     missions_json: "/home/some_user/mir_ws/src/fleet_adapter_mir/missions/rmf_cart_missions.json"  # Filepath to RMF cart delivery missions
     search_timeout: 60
     pickup_dist_threshold: 3.0 # metres
+    # Examples of additional fields for cart detection module
+    io_name: "MiR internal IOs"
+    latch_io: 2

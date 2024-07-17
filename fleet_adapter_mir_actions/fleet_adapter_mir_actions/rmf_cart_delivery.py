@@ -84,7 +84,7 @@ class CartDelivery(MirAction):
         # Import CartDetection module if provided
         detection_module = self.action_config.get('cart_detection_module')
         assert (detection_module is not None,
-                'CartDetection module is required for CartDelivery plugin, ' + \
+                'CartDetection module is required for CartDelivery plugin, ' +
                 'but it is not found!')
         detection_plugin = importlib.import_module(detection_module)
         self.cart_detection = detection_plugin.CartDetection(mir_api, action_config)
