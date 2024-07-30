@@ -34,7 +34,7 @@ class MirAction(ABC):
             # Check if these missions are already created on the robot
             missions_created = True
             for mission_name in action_missions.keys():
-                if not mission_name in self.api.known_missions:
+                if mission_name not in self.api.known_missions:
                     missions_created = False
                     break
             if missions_created:
@@ -44,19 +44,21 @@ class MirAction(ABC):
             self.api.create_missions(action_missions)
             # Update mission actions stored in MirAPI
             for mission, mission_data in self.api.known_missions.items():
-                self.api.mission_actions[mission] = self.api.missions_mission_id_actions_get(mission_data['guid'])
+                self.api.mission_actions[mission] = \
+                    self.api.missions_mission_id_actions_get(
+                        mission_data['guid'])
 
     # This will be called whenever an action has begun
     @abstractmethod
     def perform_action(self,
                        category: str,
                        description: dict,
-                       execution  # rmf_fleet_adapter.ActionExecution
-        ): 
+                       execution):  # rmf_fleet_adapter.ActionExecution
         # To be populated in the plugins
         ...
 
-    # This will be called on every update to check on the action's current state
+    # This will be called on every update to check on the action's
+    # current state
     @abstractmethod
     def update_action(self):
         # To be populated in the plugins
@@ -67,15 +69,21 @@ class MirAction(ABC):
                             cancel_fail: Callable[[], None],
                             label: str = ''):
         current_task_id = self.update_handle.more().current_task_id()
-        self.node.get_logger().info(f'Cancel task requested for [{current_task_id}]')
+        self.node.get_logger().info(
+            f'[{self.name}] Cancel task requested for [{current_task_id}]')
+
         def _on_cancel(result: bool):
             if result:
-                self.node.get_logger().info(f'Found task [{current_task_id}], cancelling...')
+                self.node.get_logger().info(
+                    f'[{self.name}] Found task [{current_task_id}], '
+                    f'cancelling...')
                 cancel_success()
             else:
-                self.node.get_logger().info(f'Failed to cancel task [{current_task_id}]')
+                self.node.get_logger().info(
+                    f'[{self.name}] Failed to cancel task [{current_task_id}]')
                 cancel_fail()
-        self.update_handle.more().cancel_task(current_task_id, [label], lambda result: _on_cancel(result))
+        self.update_handle.more().cancel_task(
+            current_task_id, [label], lambda result: _on_cancel(result))
 
 
 class MirActionFactory(ABC):

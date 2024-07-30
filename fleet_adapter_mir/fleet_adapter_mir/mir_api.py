@@ -36,6 +36,7 @@ class MiRPositionTypes(enum.IntEnum):
 
 LocalizationParamPosition = 'position_estimate'
 
+
 class MapConversions:
     def __init__(self, rmf_to_mir: dict):
         self.rmf_to_mir = rmf_to_mir
@@ -43,7 +44,10 @@ class MapConversions:
 
 
 class MirStatus:
-    def __init__(self, response: dict, map_conversions: MapConversions, map_name: str):
+    def __init__(self,
+                 response: dict,
+                 map_conversions: MapConversions,
+                 map_name: str):
         self.response = response
         p = response['position']
         self.state = RobotState(
@@ -54,9 +58,14 @@ class MirStatus:
 
 
 class MirAPI:
-    def __init__(self, prefix, headers, conversions, rmf_missions, timeout=10.0, debug=False):
-        #HTTP connection
-        self.prefix =  prefix
+    def __init__(self,
+                 prefix,
+                 headers,
+                 conversions,
+                 rmf_missions,
+                 timeout=10.0,
+                 debug=False):
+        self.prefix = prefix
         self.debug = False
         self.headers = headers
         self.timeout = timeout
@@ -74,7 +83,10 @@ class MirAPI:
 
     def attempt_connection(self):
         try:
-            requests.get(self.prefix + 'wifi/connections', headers=self.headers, timeout=self.timeout)
+            requests.get(
+                self.prefix + 'wifi/connections',
+                headers=self.headers,
+                timeout=self.timeout)
         except HTTPError as http_err:
             print(f"HTTP error: {http_err}")
             return
@@ -104,7 +116,8 @@ class MirAPI:
             f'{dock_and_charge_key} mission must be specified in fleet config '
             f'file under conversions -> missions'
         )
-        self.dock_and_charge_mission: str = self.mission_keys[dock_and_charge_key]
+        self.dock_and_charge_mission: str = \
+            self.mission_keys[dock_and_charge_key]
         assert self.dock_and_charge_mission in self.known_missions, (
             f'RMF dock and charge mission [{self.dock_and_charge_mission}] '
             f'has not yet been defined as a mission in the MiR robot '
@@ -137,8 +150,8 @@ class MirAPI:
                     self.localize_params = action['parameters']
                     break
             assert self.localize_params is not None, (
-                f'No switch_map action in the mission {self.localize_mission}:\n'
-                f'{localize_actions}'
+                f'No switch_map action in the mission {self.localize_mission}:'
+                f'\n{localize_actions}'
             )
             found_position_estimate_param = False
             for param in self.localize_params:
@@ -151,17 +164,18 @@ class MirAPI:
 
         # Retrieve mission parameters
         for mission, mission_data in self.known_missions.items():
-            self.mission_actions[mission] = self.missions_mission_id_actions_get(
-                mission_data['guid'])
+            self.mission_actions[mission] = \
+                self.missions_mission_id_actions_get(mission_data['guid'])
 
         self.created_by_id = self.me_get()['guid']
 
     def update_known_positions(self):
         self.known_positions = {}
         for pos in self.positions_get():
-            if pos['name'] in self.known_positions and \
-                    pos['type_id'] == self.known_positions[pos['name']]['type_id'] and \
-                    ('rmf_localize' in pos['name']):
+            if (pos['name'] in self.known_positions and
+                    (pos['type_id'] ==
+                     self.known_positions[pos['name']]['type_id']) and
+                    ('rmf_localize' in pos['name'])):
                 # Delete any duplicate positions
                 self.positions_guid_delete(pos['guid'])
             elif pos['type_id'] == MiRPositionTypes.ROBOT or \
@@ -194,12 +208,18 @@ class MirAPI:
         for mission_name, mission_json in rmf_missions.items():
             if mission_name not in self.known_missions:
                 # Create the relevant mission on MiR
-                mission = self.missions_post(mission_name, rmf_mission_group_id)
+                mission = self.missions_post(
+                    mission_name, rmf_mission_group_id)
                 self.known_missions[mission['name']] = mission
                 # Fill in mission actions
-                self.create_rmf_mission_actions(mission_name, mission['guid'], mission_json)
+                self.create_rmf_mission_actions(
+                    mission_name, mission['guid'], mission_json)
 
-    def create_rmf_mission_actions(self, mission_name: str, mission_id: str, mission_json: list[dict]):
+    def create_rmf_mission_actions(
+            self,
+            mission_name: str,
+            mission_id: str,
+            mission_json: list[dict]):
         for action in mission_json:
             # Find schema for action type
             action_type = action.get('action_type')
@@ -218,17 +238,21 @@ class MirAPI:
                 param_body['input_name'] = param['input_name']
                 param_body['value'] = param['value']
 
-                # If the input type is a position, we would need a valid GUID for the value field
-                # Let's find a placeholder position GUID from the list of known positions
-                if param_body['id'] == 'position' or param_body['id'] == 'entry_position':
+                # If the input type is a position, we would need a valid GUID
+                # for the value field. Let's find a placeholder position GUID
+                # from the list of known positions
+                if (param_body['id'] == 'position' or
+                        param_body['id'] == 'entry_position'):
                     default_pos = self.positions_get()[0]['guid']
                     param_body['value'] = default_pos
-                # Similarly, if the input type is a marker type, we'll need to find a placeholder
-                # marker type GUID from the list of known marker types
+                # Similarly, if the input type is a marker type, we'll need to
+                # find a placeholder marker type GUID from the list of known
+                # marker types
                 if param_body['id'] == 'marker_type':
                     default_marker = self.docking_offsets_get()[0]['guid']
                     param_body['value'] = default_marker
-                # If the input type is a footprint, we'll also use a placeholder footprint GUID
+                # If the input type is a footprint, we'll also use a
+                # placeholder footprint GUID
                 if param_body['id'] == 'footprint':
                     default_footprint = self.footprints_get()[0]['guid']
                     param_body['value'] = default_footprint
@@ -246,7 +270,8 @@ class MirAPI:
                 param_body['input_name'] = param.get('input_name')
 
                 default_value = None
-                if 'constraints' in param and 'default' in param['constraints']:
+                if ('constraints' in param and
+                        'default' in param['constraints']):
                     default_value = param['constraints']['default']
                 param_body['value'] = default_value
                 action_body_param.append(param_body)
@@ -270,7 +295,7 @@ class MirAPI:
         return self.queue_mission_by_name(self.move_mission, mission_params)
 
     def go_to_known_position(self, position_name):
-        if not position_name in self.known_positions:
+        if position_name not in self.known_positions:
             return None
         return self.dock(self.go_to, None, position_name)
 
@@ -285,8 +310,10 @@ class MirAPI:
         assert end_wp is not None
         end_wp_guid = end_wp.get('guid')
         assert end_wp_guid is not None
-        end_param = self.get_mission_params_with_value(mission_name, 'move', 'end_waypoint', end_wp_guid)
-        dock_param = self.get_mission_params_with_value(mission_name, 'docking', 'end_waypoint', end_wp_guid)
+        end_param = self.get_mission_params_with_value(
+            mission_name, 'move', 'end_waypoint', end_wp_guid)
+        dock_param = self.get_mission_params_with_value(
+            mission_name, 'docking', 'end_waypoint', end_wp_guid)
 
         # Start waypoint is optional
         if start_waypoint is not None:
@@ -297,14 +324,18 @@ class MirAPI:
             assert start_wp is not None
             start_wp_guid = start_wp.get('guid')
             assert start_wp_guid is not None
-            start_param = self.get_mission_params_with_value(mission_name, 'move', 'start_waypoint', start_wp_guid)
+            start_param = self.get_mission_params_with_value(
+                mission_name, 'move', 'start_waypoint', start_wp_guid)
             mission_params = start_param + end_param
 
-        # Check whether we should dock into this end waypoint or not (for charging)
+        # Check whether we should dock into this end waypoint (for charging)
         elif dock_param:
             charger_marker_type = self.marker_type_keys['charger']
-            charger_marker_type_guid = self.docking_offsets_guid_get(charger_marker_type)
-            marker_param = self.get_mission_params_with_value(mission_name, 'docking', 'charger_marker_type', charger_marker_type_guid)
+            charger_marker_type_guid = self.docking_offsets_guid_get(
+                charger_marker_type)
+            marker_param = self.get_mission_params_with_value(
+                mission_name, 'docking', 'charger_marker_type',
+                charger_marker_type_guid)
             mission_params = end_param + dock_param + marker_param
         else:
             mission_params = end_param
@@ -336,16 +367,15 @@ class MirAPI:
             mission_params=mission_params
         )
 
-
     def get_position_guid(self, name, map_id, location):
         attempts = 0
         max_attempts = 10
         while True:
-            attempts +=1
+            attempts += 1
             if attempts >= max_attempts:
                 print(
-                    f'Too many attempts [{max_attempts}] to set a localization '
-                    'position.'
+                    f'Too many attempts [{max_attempts}] to set a '
+                    f'localization position.'
                 )
                 return None
 
@@ -373,11 +403,11 @@ class MirAPI:
                 # positions and retry this loop.
                 self.update_known_positions()
             elif not position_matches(position):
-                if self.positions_put(position['guid'], name, map_id, location):
+                if self.positions_put(
+                        position['guid'], name, map_id, location):
                     return position['guid']
             else:
                 return position['guid']
-
 
     def queue_mission_by_name(self, mission_name, mission_params=None):
         mir_mission = self.known_missions.get(mission_name)
@@ -448,7 +478,7 @@ class MirAPI:
                 print(f'Response: {response}')
             self.known_positions[response['name']] = response
             return response['guid']
-        except:
+        except Exception as err:
             pass
 
     def positions_delete(self):
@@ -463,17 +493,18 @@ class MirAPI:
                         timeout=self.timeout
                     ).json()
                     return response['guid']
-                except:
+                except Exception as err:
                     pass
             else:
-                new_known_positions[position] = copy.deepcopy(self.known_positions[position])
+                new_known_positions[position] = \
+                    copy.deepcopy(self.known_positions[position])
         self.known_positions = {}
         self.known_positions = new_known_positions
 
     def positions_guid_delete(self, guid):
         try:
             response = requests.delete(
-                self.prefix  + f'positions/{guid}',
+                self.prefix + f'positions/{guid}',
                 headers=self.headers,
                 timeout=self.timeout
             ).json()
@@ -486,7 +517,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + f'status', headers=self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + f'status',
+                headers=self.headers,
+                timeout=self.timeout)
             # To prevent adapter crashing in case of error
             if response.json() is None or 'position' not in response.json():
                 return None
@@ -520,7 +554,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + 'users/me', headers=self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + 'users/me',
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f'Response: {response.json()}')
             return response.json()
@@ -533,7 +570,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + f'mission_groups', headers = self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + f'mission_groups',
+                headers=self.headers,
+                timeout=self.timeout)
             return response.json()
         except HTTPError as http_err:
             print(f"HTTP error: {http_err}")
@@ -544,7 +584,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + 'actions', headers=self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + 'actions',
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -557,7 +600,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + f'actions/{action_type}', headers=self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + f'actions/{action_type}',
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -570,7 +616,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + 'missions', headers=self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + 'missions',
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -583,7 +632,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + 'positions' , headers=self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + 'positions',
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -596,7 +648,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + f'mission_queue', headers = self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + f'mission_queue',
+                headers=self.headers,
+                timeout=self.timeout)
             return response.json()
         except HTTPError as http_err:
             print(f"HTTP error: {http_err}")
@@ -607,7 +662,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + f'mission_queue/{mission_queue_id}', headers = self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + f'mission_queue/{mission_queue_id}',
+                headers=self.headers,
+                timeout=self.timeout)
             return response.json()
         except HTTPError as http_err:
             print(f"HTTP error: {http_err}")
@@ -619,14 +677,19 @@ class MirAPI:
             return
         data = {'mission_id': mission_id}
         if full_mission_description is not None:
-            # print(f'---------->>> {full_mission_description}')
             data = full_mission_description
             if mission_id != full_mission_description['mission_id']:
-                print(f'Inconsistent mission id, provided [{mission_id}], full_mission_description: [{full_mission_description}]')
+                print(f'Inconsistent mission id, provided [{mission_id}], '
+                      f'full_mission_description: '
+                      f'[{full_mission_description}]')
                 return
 
         try:
-            response = requests.post(self.prefix + 'mission_queue' , headers = self.headers, data=json.dumps(data), timeout = self.timeout)
+            response = requests.post(
+                self.prefix + 'mission_queue',
+                headers=self.headers,
+                data=json.dumps(data),
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -639,7 +702,11 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.post(self.prefix + 'missions/' + mission_id +'/actions' , headers = self.headers, data=json.dumps(body), timeout = self.timeout)
+            response = requests.post(
+                self.prefix + 'missions/' + mission_id + '/actions',
+                headers=self.headers,
+                data=json.dumps(body),
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
                 print(response.status_code)
@@ -653,7 +720,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + 'missions/' + str(mission_id) +'/actions' , headers = self.headers, timeout = self.timeout)
+            response = requests.get(
+                self.prefix + 'missions/' + str(mission_id) + '/actions',
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
                 print(response.status_code)
@@ -673,7 +743,11 @@ class MirAPI:
             'icon': ''
         }
         try:
-            response = requests.post(self.prefix + 'mission_groups' , headers = self.headers, data=json.dumps(data), timeout = self.timeout)
+            response = requests.post(
+                self.prefix + 'mission_groups',
+                headers=self.headers,
+                data=json.dumps(data),
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -691,7 +765,11 @@ class MirAPI:
             'group_id': mission_group_id
         }
         try:
-            response = requests.post(self.prefix + 'missions' , headers = self.headers, data=json.dumps(data), timeout = self.timeout)
+            response = requests.post(
+                self.prefix + 'missions',
+                headers=self.headers,
+                data=json.dumps(data),
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -704,7 +782,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + 'positions/'+ guid, headers=self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + 'positions/' + guid,
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -718,9 +799,13 @@ class MirAPI:
             return
         data = {"state_id": state_id}
         try:
-            response = requests.put(self.prefix + 'status', headers = self.headers, data=json.dumps(data), timeout=self.timeout)
+            response = requests.put(
+                self.prefix + 'status',
+                headers=self.headers,
+                data=json.dumps(data),
+                timeout=self.timeout)
             if self.debug:
-                  print(f"Response: {response.json()}")
+                print(f"Response: {response.json()}")
             return response.json()
         except HTTPError as http_err:
             print(f"HTTP error: {http_err}")
@@ -732,9 +817,13 @@ class MirAPI:
             return
         data = {"clear_error": True}
         try:
-            response = requests.put(self.prefix + 'status', headers = self.headers, data=json.dumps(data), timeout=self.timeout)
+            response = requests.put(
+                self.prefix + 'status',
+                headers=self.headers,
+                data=json.dumps(data),
+                timeout=self.timeout)
             if self.debug:
-                  print(f"Response: {response.json()}")
+                print(f"Response: {response.json()}")
             return response.json()
         except HTTPError as http_err:
             print(f"HTTP error: {http_err}")
@@ -745,7 +834,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.delete(self.prefix + 'mission_queue' , headers = self.headers, timeout = self.timeout)
+            response = requests.delete(
+                self.prefix + 'mission_queue',
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.headers}")
             return True
@@ -762,8 +854,8 @@ class MirAPI:
         try:
             response = requests.delete(
                 self.prefix + 'mission_queue/' + str(mission_queue_id),
-                headers = self.headers,
-                timeout = self.timeout
+                headers=self.headers,
+                timeout=self.timeout
             )
             if self.debug:
                 print(f"Response: {response.headers}")
@@ -779,7 +871,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.delete(self.prefix + 'missions/' +guid , headers = self.headers, timeout = self.timeout)
+            response = requests.delete(
+                self.prefix + 'missions/' + guid,
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.headers}")
             return True
@@ -794,7 +889,10 @@ class MirAPI:
         if not self.connected:
             return []
         try:
-            response = requests.get(self.prefix + 'maps', headers = self.headers, timeout = self.timeout)
+            response = requests.get(
+                self.prefix + 'maps',
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.headers}")
             return response.json()
@@ -809,7 +907,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + 'docking_offsets', headers=self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + 'docking_offsets',
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -829,7 +930,10 @@ class MirAPI:
         if not self.connected:
             return
         try:
-            response = requests.get(self.prefix + 'footprints', headers=self.headers, timeout=self.timeout)
+            response = requests.get(
+                self.prefix + 'footprints',
+                headers=self.headers,
+                timeout=self.timeout)
             if self.debug:
                 print(f"Response: {response.json()}")
             return response.json()
@@ -849,12 +953,17 @@ class MirAPI:
         mission_status = self.mission_queue_id_get(mission_queue_id)
         if not mission_status:
             return False
-        if 'finished' in mission_status and mission_status['finished'] is not None:
-        # if 'state' in mission_status and mission_status['state'] == 'Done':
+        if ('finished' in mission_status and
+                mission_status['finished'] is not None):
             return True
         return False
 
-    def get_mission_params_with_value(self, mission_name: str, action_type: str, param_name: str, value: str):
+    def get_mission_params_with_value(
+            self,
+            mission_name: str,
+            action_type: str,
+            param_name: str,
+            value: str):
         mission_actions = self.mission_actions.get(mission_name)
         mission_params = None
         for d in mission_actions:

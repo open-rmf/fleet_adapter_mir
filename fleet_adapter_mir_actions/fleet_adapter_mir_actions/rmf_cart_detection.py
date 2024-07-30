@@ -1,6 +1,7 @@
 import requests
 from urllib.error import HTTPError
 
+
 class CartDetection:
     def __init__(
             self,
@@ -49,9 +50,10 @@ class CartDetection:
         if not self.api.connected:
             return None
         try:
-            response = requests.get(self.api.prefix + f'registers/{register}',
-                                    headers=self.api.headers,
-                                    timeout=self.api.timeout)
+            response = requests.get(
+                self.api.prefix + f'registers/{register}',
+                headers=self.api.headers,
+                timeout=self.api.timeout)
             if self.api.debug:
                 print(f"Response: {response.headers}")
             # Response value is string, return integer of value
@@ -69,10 +71,10 @@ class CartDetection:
         if io_guid is None:
             return None
         try:
-            response = requests.get(self.api.prefix +
-                                    f'io_modules/{io_guid}/status',
-                                    headers=self.api.headers,
-                                    timeout=self.api.timeout)
+            response = requests.get(
+                self.api.prefix + f'io_modules/{io_guid}/status',
+                headers=self.api.headers,
+                timeout=self.api.timeout)
             if self.api.debug:
                 print(f"Response: {response.headers}")
             if 'input_state' not in response.json():
@@ -89,9 +91,10 @@ class CartDetection:
         if not self.api.connected:
             return None
         try:
-            response = requests.get(self.api.prefix + f'io_modules',
-                                    headers=self.api.headers,
-                                    timeout=self.api.timeout)
+            response = requests.get(
+                self.api.prefix + f'io_modules',
+                headers=self.api.headers,
+                timeout=self.api.timeout)
             if self.api.debug:
                 print(f"Response: {response.headers}")
             # Response value is string, return integer of value

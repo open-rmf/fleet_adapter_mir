@@ -18,6 +18,7 @@ import rmf_adapter.easy_full_control as rmf_easy
 from rmf_adapter import Transformation
 from .robot_adapter_mir import RobotAdapterMiR
 
+
 ###############################################################################
 # HELPER FUNCTIONS AND CLASSES
 ###############################################################################
@@ -110,7 +111,7 @@ class FleetAdapterMiR:
         for robot in self.robot_handles:
             robot_updaters.append(robot.update_loop(self.period))
         await asyncio.gather(*robot_updaters)
-        
+
     def update_loop(self):
         asyncio.set_event_loop(self.event_loop)
         self.event_loop.run_until_complete(self.state_updates())
@@ -131,14 +132,17 @@ class FleetAdapterMiR:
         rclpy.shutdown()
 
 
-def create_fleet(fleet_config, config_yaml, cmd_node, rmf_missions) -> FleetAdapterMiR:
+def create_fleet(
+        fleet_config, config_yaml, cmd_node, rmf_missions) -> FleetAdapterMiR:
     """Create RMF Adapter and fleet handle"""
-    for level, coords in config_yaml['conversions']['reference_coordinates'].items():
+    for level, coords in \
+            config_yaml['conversions']['reference_coordinates'].items():
         tf = compute_transforms(level, coords, cmd_node)
         fleet_config.add_robot_coordinates_transformation(level, tf)
 
     # RMF_CORE Fleet Adapter: Manages delivery or loop requests
-    adapter = rmf_adapter.Adapter.make(config_yaml['node_names']['rmf_fleet_adapter'])
+    adapter = rmf_adapter.Adapter.make(
+        config_yaml['node_names']['rmf_fleet_adapter'])
     assert adapter, ("Adapter could not be init! "
                      "Ensure a ROS2 scheduler node is running")
 
@@ -160,8 +164,10 @@ def create_fleet(fleet_config, config_yaml, cmd_node, rmf_missions) -> FleetAdap
     event_loop = asyncio.new_event_loop()
 
     robots_handles = []
-    for robot_name, rmf_config in fleet_config.known_robot_configurations.items():
-        mir_config = config_yaml['rmf_fleet']['robots'][robot_name]['mir_config']
+    for robot_name, rmf_config in \
+            fleet_config.known_robot_configurations.items():
+        mir_config = \
+            config_yaml['rmf_fleet']['robots'][robot_name]['mir_config']
         robots_handles.append(RobotAdapterMiR(
             robot_name,
             rmf_config,
@@ -176,7 +182,9 @@ def create_fleet(fleet_config, config_yaml, cmd_node, rmf_missions) -> FleetAdap
             debug,
         ))
 
-    return FleetAdapterMiR(cmd_node, adapter, fleet_handle, robots_handles, update_frequency, event_loop)
+    return FleetAdapterMiR(
+        cmd_node, adapter, fleet_handle, robots_handles, update_frequency,
+        event_loop)
 
 
 ###############################################################################
@@ -246,7 +254,8 @@ def main(argv=sys.argv):
     print()
 
     # Create a node to use inside of the Python code for logging
-    cmd_node = rclpy.node.Node(config_yaml['node_names']['robot_command_handle'])
+    cmd_node = rclpy.node.Node(
+        config_yaml['node_names']['robot_command_handle'])
 
     # Create the fleet, including the robots that are in the config file
     fleet = create_fleet(fleet_config, config_yaml, cmd_node, rmf_missions)

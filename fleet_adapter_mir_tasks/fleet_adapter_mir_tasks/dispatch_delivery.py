@@ -112,18 +112,20 @@ class TaskRequester(Node):
             }]
         description["phases"].append(
             {"activity": {"category": "sequence",
-                          "description": {"activities": go_to_pickup_activity}}})
-        pickup_action_activity = [{"category": "perform_action",
-                           "description": {
-                               "unix_millis_action_duration_estimate": 60000,
-                               "category": 'delivery_pickup',
-                               "description": {
-                                    "cart_id": self.args.cart_id,
-                                    "pickup_lot": self.args.pickup_lot
-                               }}}]
+                          "description": {
+                              "activities": go_to_pickup_activity}}})
+        pickup_action_activity = [{
+            "category": "perform_action",
+            "description": {
+                "unix_millis_action_duration_estimate": 60000,
+                "category": 'delivery_pickup',
+                "description": {
+                    "cart_id": self.args.cart_id,
+                    "pickup_lot": self.args.pickup_lot}}}]
         description["phases"].append(
             {"activity": {"category": "sequence",
-                          "description": {"activities": pickup_action_activity}}})
+                          "description": {
+                              "activities": pickup_action_activity}}})
         # GoToPlace activity
         go_to_dropoff_activity = [{
             "category": "go_to_place",
@@ -131,7 +133,8 @@ class TaskRequester(Node):
             }]
         description["phases"].append(
             {"activity": {"category": "sequence",
-                          "description": {"activities": go_to_dropoff_activity}}})
+                          "description": {
+                              "activities": go_to_dropoff_activity}}})
         # Dropoff activity
         dropoff_action_activity = [{
             "category": "perform_action",
@@ -143,7 +146,8 @@ class TaskRequester(Node):
             }]
         description["phases"].append(
             {"activity": {"category": "sequence",
-                          "description": {"activities": dropoff_action_activity}}})
+                          "description": {
+                              "activities": dropoff_action_activity}}})
         # Consolidate
         request["description"] = description
         payload["request"] = request
