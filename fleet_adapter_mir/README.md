@@ -73,7 +73,7 @@ Upon launch, the MiR fleet adapter recognizes MiR positions with identical names
 
 ### Plugins
 
-The MiR is capable of performing various types of custom missions and tasks. You can now easily set up plugins offered in this repo instead of writing your own perform action for common use cases.
+The MiR is capable of performing various types of custom missions and tasks. You can now easily set up plugins offered in this repo instead of writing your own perform action for common use cases. These plugins offered are available under the `fleet_adapter_mir_actions` package.
 
 For cart deliveries from point A to B:
 
@@ -91,17 +91,18 @@ Some relevant MiR missions (docking, exit, update footprint) will be automatical
 
 They are defined and stored in the `rmf_cart_missions.json` file and do not require any further configuration.
 
-However, since there are various types of latching methods available for different MiR models, users will need to set up their custom pickup and dropoff missions on the MiR:
+However, since there are various types of latching methods available for different MiR models, users will need to set up their custom pickup and dropoff missions on the MiR, as well as implement their own `CartDetection` plugin module with the appropriate APIs to detect latching states.
 1. Create 2 missions on the MiR:
    - `rmf_pickup_cart`: Triggers the robot's latching module to open
    - `rmf_dropoff_cart`: Triggers the robot's latching module to close and release the cart, then exit from under the cart (relative move -1 metre in the X-direction)
 2. Fill in the MiR mission names in the plugin config under `missions`. The default mission names are `rmf_pickup_cart` and `rmf_dropoff_cart`.
 3. Fill in the footprints and marker types to be used for your specific robot and cart in the plugin config.
-4. In `rmf_cart_delivery.py`, fill in the logic to check whether the robot's latching module is open in blanks marked `# IMPLEMENT YOUR CODE HERE`. Some API calls to check the MiR's PLC registers and IO modules are provided in case you may want to use them.
+4. Create your own `CartDetection` plugin. You may use `rmf_cart_detection.py` as a reference for how your plugin module should be implemented. Fill in the logic to check whether the robot's latching module is open in blanks marked `# IMPLEMENT YOUR CODE HERE`. Some API calls to check the MiR's PLC registers and IO modules are provided in case you may want to use them.
+5. In the plugin config, update the `cart_detection_module` field to point to your own written module.
 
-To submit a cart delivery task, you may use the `dispatch_pickup` task script:
+To submit a cart delivery task, you may use the `dispatch_delivery` task script found in the `fleet_adapter_mir_tasks` package:
 ```bash
-ros2 run fleet_adapter_mir_tasks dispatch_pickup -g go_to_waypoint -p pickup_lot -d dropoff_lot -c some_cart_id
+ros2 run fleet_adapter_mir_tasks dispatch_delivery -g go_to_waypoint -p pickup_lot -d dropoff_lot -c some_cart_id
 ```
 - `-g`: Takes in an existing waypoint name for the robot to travel to before performing the pickup
 - `-p`: Name of the pickup lot. This name should be identical to the shelf position configured on the MiR.
