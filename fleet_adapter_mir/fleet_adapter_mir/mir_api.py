@@ -341,17 +341,19 @@ class MirAPI:
             mission_params = end_param
         return self.queue_mission_by_name(mission_name, mission_params)
 
-    def localize(self, map, estimate, index):
+    def localize(self, map, estimate, index, position_name=None):
         if self.localize_mission is None:
             raise Exception(
                 'The fleet was not configured with a localize mission'
             )
 
-        if index is not None:
-            position_name = f'rmf_localize_{index}'
-        else:
-            p = estimate
-            position_name = f'rmf_localize_{map}_{p[0]:.2f}_{p[1]:.2f}'
+        # If a MiR position is provided, we'll use that position directly
+        if position_name is None:
+            if index is not None:
+                position_name = f'rmf_localize_{index}'
+            else:
+                p = estimate
+                position_name = f'rmf_localize_{map}_{p[0]:.2f}_{p[1]:.2f}'
         mir_map = self.map_conversions.rmf_to_mir[map]
         map_id = self.known_maps[mir_map]
         position_guid = self.get_position_guid(position_name, map_id, estimate)

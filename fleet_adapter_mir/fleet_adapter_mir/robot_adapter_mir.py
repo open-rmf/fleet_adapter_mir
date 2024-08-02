@@ -680,9 +680,21 @@ class RobotAdapterMiR:
         mission_queue_id = None
         while count < retry_count and not mission_queue_id:
             count += 1
+
+            # If this localize request is being made for a map switch, and a
+            # MiR position is provided in the fleet config for this RMF lift
+            # waypoint, we can localize to that position directly
+            mir_position = None
+            if estimate.inside_lift:
+                lift_name = estimate.inside_lift.name
+                this_lift = self.lift_positions.get(lift_name)
+                if this_lift and this_lift.get(estimate.map):
+                    mir_position = this_lift[estimate.map].get('name')
+
             try:
                 mission_queue_id = self.api.localize(
-                    estimate.map, estimate.position, estimate.graph_index
+                    estimate.map, estimate.position, estimate.graph_index,
+                    mir_position
                 )
                 if mission_queue_id is not None:
                     self.node.get_logger().info(
