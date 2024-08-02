@@ -1,10 +1,23 @@
+# Copyright 2024 Open Source Robotics Foundation, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from collections import namedtuple
 import copy
 import enum
 import math
 import requests
 import json
-from icecream import ic
 from urllib.error import HTTPError
 
 from rmf_adapter.easy_full_control import RobotState
@@ -66,7 +79,7 @@ class MirAPI:
                  timeout=10.0,
                  debug=False):
         self.prefix = prefix
-        self.debug = False
+        self.debug = debug
         self.headers = headers
         self.timeout = timeout
         self.connected = False
@@ -385,16 +398,6 @@ class MirAPI:
             # the MiR server has an acceptable position for us to use for
             # localization
             position = self.known_positions.get(name)
-
-            def position_matches(pos):
-                if abs(pos['pos_x'] - location[0]) > 0.01:
-                    return False
-                if abs(pos['pos_y'] - location[1]) > 0.01:
-                    return False
-                if pos['map_id'] != map_id:
-                    return False
-                return True
-
             if position is None:
                 # The position does not exist so we need to create a new one
                 position_guid = self.positions_post(name, map_id, location)
