@@ -166,8 +166,8 @@ class RobotAdapterMiR:
                 return
             if self.disconnect:
                 self.node.get_logger().info(
-                    f'Robot [{self.name}] connectivity resumed, received status '
-                    f'from robot successfully.')
+                    f'Robot [{self.name}] connectivity resumed, received '
+                    f'status from robot successfully.')
                 self.disconnect = False
             more = self.update_handle.more()
             if more is not None:
@@ -184,7 +184,8 @@ class RobotAdapterMiR:
                 self.last_known_status = status
             else:
                 self.node.get_logger().info(
-                    f'Mission is None / Robot is localizing, ignore status update')
+                    f'Mission is None / Robot is localizing, ignore status '
+                    f'update')
 
             # Update RMF to mark the ActionExecution as finished
             if mission is not None and mission.done:
@@ -206,7 +207,8 @@ class RobotAdapterMiR:
                     # This means that the action has ended, we can clear the
                     # current action object
                     self.node.get_logger().info(
-                        f'Robot [{self.name}] has completed its current action.')
+                        f'Robot [{self.name}] has completed its current '
+                        f'action.')
                     self.current_action = None
 
             # Clear error on updates
@@ -215,7 +217,7 @@ class RobotAdapterMiR:
                 self.api.clear_error()
             if (status is not None and
                     (status.response['state_id'] == MiRStateCode.PAUSE or
-                    status.response['state_id'] == MiRStateCode.ERROR)):
+                     status.response['state_id'] == MiRStateCode.ERROR)):
                 self.api.status_put(MiRStateCode.READY)
 
     def is_charging(self, status: MirStatus):
@@ -336,13 +338,14 @@ class RobotAdapterMiR:
 
     def navigate(self, destination, execution):
         # If robot is disconnected and we are unable to retrieve any robot
-        # status, we'll ignore all commands from RMF until robot is re-connected
+        # status, we'll ignore all commands from RMF until robot is
+        # re-connected
         with self.disconnect_mutex:
             if self.disconnect:
                 self.node.get_logger().info(
-                    f'Robot [{self.name}] received new navigation command while'
-                    f' disconnected, ignoring command and requesting replan '
-                    f'after robot is re-connected.'
+                    f'Robot [{self.name}] received new navigation command '
+                    f'while disconnected, ignoring command and requesting '
+                    f'replan after robot is re-connected.'
                 )
                 self.replan_after_disconnect = True
                 return
@@ -635,7 +638,8 @@ class RobotAdapterMiR:
 
     def stop(self, activity):
         # If robot is disconnected and we are unable to retrieve any robot
-        # status, we'll ignore all commands from RMF until robot is re-connected
+        # status, we'll ignore all commands from RMF until robot is
+        # re-connected
         with self.disconnect_mutex:
             if self.disconnect:
                 self.node.get_logger().info(
