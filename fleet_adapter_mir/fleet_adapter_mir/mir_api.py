@@ -397,15 +397,14 @@ class MirAPI:
                 # The position does not exist so we need to create a new one
                 position_guid = self.positions_post(name, map_id, location)
                 if position_guid is not None:
+                    print(
+                        f'Successfully posted position {name} on MiR with '
+                        f'location {location}'
+                    )
                     return position_guid
-                # For some reason posting the new position failed. Maybe there
-                # was a timeout or an argument error. We will update the known
-                # positions and retry this loop.
-                self.update_known_positions()
-            elif not position_matches(position):
-                if self.positions_put(
-                        position['guid'], name, map_id, location):
-                    return position['guid']
+                print(
+                    f'Unable to post position {name} on MiR!'
+                )
             else:
                 return position['guid']
 
