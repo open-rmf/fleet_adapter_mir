@@ -80,7 +80,7 @@ rmf_fleet:
     delivery: True
     clean: False
   finishing_request: "charge" # [park, charge, nothing]
-  actions: ["rmf_cart_delivery", "delivery_pickup", "delivery_dropoff"]
+  actions: ["rmf_cart_delivery", "delivery_pickup", "delivery_dropoff", "wait_until"]
   robots:
     mir_1:
       charger: "Charger_1"
@@ -117,3 +117,14 @@ plugins:
     # Examples of additional fields for cart detection module
     io_name: "MiR internal IOs"
     latch_io: 2
+  rmf_wait_until:
+    module: "fleet_adapter_mir_actions.rmf_wait_until"
+    class: "WaitUntil"
+    actions: ["wait_until"]
+    timeout: 1800 # seconds, default timeout if there is no move-off signal received
+    # Optional fields to configure default move-off signal
+    signal_type: "mission" # [mission, plc, or custom], if not provided the robot will wait the full duration of the default timeout
+    mission_name: "some_mission_name" # Required field if signal type is "mission". The mission will be queued when the action starts, and the robot will move off when the mission is completed.
+    resubmit_on_abort: False # Optional field for signal type "mission". Set to True to resubmit mission if the mission gets aborted by the robot. Default to False.
+    plc_register: 20 # Required field if signal type is "plc". Robot moves off when PLC register returns True
+    move_off_module: "fleet_adapter_mir_actions.rmf_move_off_alert" # Required field if signal type is "custom". Fill in with path to custom module written.
