@@ -129,7 +129,6 @@ The workflow of the task is as follows:
 There are 2 move-off behavior provided in the plugin.
 1. Move-off when a MiR mission completes.
    - Users may create/pick a MiR mission on the robot and provide the mission name in the fleet config or task description. This mission will be submitted to the robot when the waiting action begins. The waiting action will end when the robot receives the move-off signal, which in this case happens when the robot completes the mission.
-   - Users may wish to configure the action behavior in cases where the mission is aborted by the robot. By setting the `resubmit_on_abort` parameter to `True`, the fleet adapter will submit the same MiR mission to the robot if the previous attempt has been aborted. The move-off signal will come only when the mission has been successfully completed. If `resubmit_on_abort` is set to `False`, the fleet adapter will accept abort missions as a move-off signal and end the waiting action.
 2. Move-off when a PLC register returns `True`.
    - When the waiting action begins, the fleet adapter will monitor the state of the PLC register specified in the fleet config or task description. When the register returns a value of `1` or `True`, the waiting action will end and the robot will move on to its next waypoint or task.
 
