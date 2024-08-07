@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import time
-from threading import Lock
+import importlib
 import requests
 from urllib.error import HTTPError
 
@@ -47,7 +47,6 @@ class WaitUntil(MirAction):
                            fleet_config, action_config)
 
         self.execution = None
-        self.mutex = Lock()
         self.start_time = None
         self.wait_timeout = action_config.get('timeout', 1800) # seconds
         self.move_off_cb = None
@@ -224,9 +223,7 @@ class WaitUntil(MirAction):
                     f'returns True.'
                 )
             case "custom":
-                # TODO(XY): import the module, create the object, then assign
-                #           check custom signal
-                signal_cb = lambda: self.check_custom_signal(
+                signal_cb = lambda: self.create_custom_signal(
                     signal_config, description)
                 self.node.get_logger().info(
                     f'Configuring robot [{self.name}] move-off behavior: '
@@ -295,9 +292,24 @@ class WaitUntil(MirAction):
             return True
         return False
 
-    def check_custom_signal(self, signal_config, description):
-        # TODO(XY): Return a lambda function
-        pass
+    def create_custom_signal(self, signal_config, description):
+        # Import the move-off behavior module
+        if 'move_off_module' not in signal_config:
+            self.node.get_logger().info(
+                f'Move-off behavior is set to custom but no move-off module '
+                f'was provided!'
+            )
+            return None
+        move_off_module = signal_config['move_off_module']
+        move_off_plugin = importlib.import_module(move_off_module)
+        move_off_signal = move_off_plugin.MoveOff(
+            self, signal_config, description)
+
+        # Trigger the begin waiting callback
+        move_off_signal.begin_waiting(description)
+        # Define the move-off callback to be called on every update
+        move_off_cb = lambda: move_off_signal.is_move_off_ready()
+        return move_off_cb
 
     # ------------------------------------------------------------------------------------------------------------------
     # MIR API FOR WAIT RELATED MISSIONS
