@@ -77,7 +77,7 @@ class TaskRequester(Node):
 
         # Construct task
         msg = ApiRequest()
-        msg.request_id = f"wait_until_" + str(uuid.uuid4())
+        msg.request_id = f"multistop_" + str(uuid.uuid4())
         payload = {}
         if self.args.fleet and self.args.robot:
             payload["type"] = "robot_task_request"
@@ -99,7 +99,7 @@ class TaskRequester(Node):
 
         # Define task request description with phases
         description = {}  # task_description_Compose.json
-        description["category"] = "wait_until"
+        description["category"] = "rmf_multistop"
         description["phases"] = []
 
         # GoToPlace + wait
