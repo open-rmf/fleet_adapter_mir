@@ -212,7 +212,7 @@ def main(argv=sys.argv):
     args_without_ros = rclpy.utilities.remove_ros_args(argv)
 
     parser = argparse.ArgumentParser(
-        prog="cgh_fleet_adapter_mir",
+        prog="fleet_adapter_mir",
         description="Configure and spin up fleet adapters for MiR 100 robots "
                     "that interface between the "
                     "MiR REST API, ROS2, and rmf_core!")
