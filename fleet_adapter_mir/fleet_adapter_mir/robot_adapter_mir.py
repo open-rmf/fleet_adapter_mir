@@ -292,22 +292,12 @@ class RobotAdapterMiR:
                 self.node.get_logger().info(f'Issue ticket is resolved!')
                 self.replan_counts = 0
         elif mission_status['state'] == 'Aborted':
-            # The robot is unable to perform the mission for some reason, so we
-            # raise an issue and re-attempt the mission.
-            tier = Tier.Error
-            category = mission_status['state']
-            detail = {
-                'mission_queue_id': mission.mission_queue_id,
-                'message': 'Mission has been aborted.'
-            }
-            # Save the issue ticket somewhere so that we can resolve it later
-            self.nav_issue_ticket = \
-                self.update_handle.more().create_issue(tier, category, detail)
-            self.node.get_logger().info(
-                f'Created [{category}] issue ticket for mission queue ID '
-                f'[{mission.mission_queue_id}]')
-
-            # After issuing a ticket, let's request a replan
+            # Create navigation issue ticket and replan
+            self.nav_issue_ticket = self.create_nav_issue_ticket(
+                mission_status['state'],
+                'Mission has been aborted.',
+                mission.mission_queue_id
+            )
             mission.done = True
             self.update_handle.more().replan()
             # We keep track of the number of times we are replanning for the
@@ -509,7 +499,12 @@ class RobotAdapterMiR:
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to move to '
                 f'destination. Maximum request navigate retries exceeded!')
-            mission_handle.execution.finished()
+            # Create navigation issue ticket and replan
+            self.nav_issue_ticket = self.create_nav_issue_ticket(
+                'Unable to post mission',
+                'No mission queue ID received for request_navigate'
+            )
+            self.update_handle.more().replan()
             return
 
         mission_handle.set_mission_queue_id(mission_queue_id)
@@ -568,7 +563,12 @@ class RobotAdapterMiR:
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to move to known '
                 f'position. Maximum request navigate retries exceeded!')
-            mission_handle.execution.finished()
+            # Create navigation issue ticket and replan
+            self.nav_issue_ticket = self.create_nav_issue_ticket(
+                'Unable to post mission',
+                'No mission queue ID received for request_go_to_known_position'
+            )
+            self.update_handle.more().replan()
             return
 
         mission_handle.set_mission_queue_id(mission_queue_id)
@@ -639,7 +639,12 @@ class RobotAdapterMiR:
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to dock to '
                 f'destination. Maximum request navigate retries exceeded!')
-            mission_handle.execution.finished()
+            # Create navigation issue ticket and replan
+            self.nav_issue_ticket = self.create_nav_issue_ticket(
+                'Unable to post mission',
+                'No mission queue ID received for request_dock'
+            )
+            self.update_handle.more().replan()
             return
 
         mission_handle.set_mission_queue_id(mission_queue_id)
@@ -725,8 +730,12 @@ class RobotAdapterMiR:
                 f'[{self.name}] Failed to localize on map {estimate.map}. '
                 f'Maximum localize retries exceeded!'
             )
-            mission.execution.finished()
-            mission_queue_id = None
+            # Create navigation issue ticket and replan
+            self.nav_issue_ticket = self.create_nav_issue_ticket(
+                'Unable to post mission',
+                'No mission queue ID received for request_localize'
+            )
+            self.update_handle.more().replan()
             return
 
         mission.set_mission_queue_id(mission_queue_id)
@@ -765,3 +774,19 @@ class RobotAdapterMiR:
         assert (len(A) > 1)
         assert (len(B) > 1)
         return math.sqrt((A[0] - B[0])**2 + (A[1] - B[1])**2)
+
+    def create_nav_issue_ticket(self, category, msg, mission_queue_id=None):
+        # The robot is unable to perform the mission for some reason, so we
+        # raise an issue and re-attempt the mission.
+        tier = Tier.Error
+        detail = {
+            'mission_queue_id': mission_queue_id,
+            'message': msg
+        }
+        # Save the issue ticket somewhere so that we can resolve it later
+        nav_issue_ticket = \
+            self.update_handle.more().create_issue(tier, category, detail)
+        self.node.get_logger().info(
+            f'Created [{category}] issue ticket for robot [{self.name}] with '
+            f'mission queue ID [{mission_queue_id}]')
+        return nav_issue_ticket
