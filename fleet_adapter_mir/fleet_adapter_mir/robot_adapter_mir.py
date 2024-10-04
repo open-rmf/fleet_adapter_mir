@@ -456,16 +456,16 @@ class RobotAdapterMiR:
         # Used for exiting while loop early in the event that for whatever
         # reason the robot starts performing a different mission, while the
         # original navigation mission is ongoing
-        navigation_mission_identifier = mission_handle.execution.identifier
+        navigation_mission_identifier = mission_handle.activity
         mission_queue_id = None
         count = 0
         retry_count = 10
         while count < retry_count and not mission_queue_id:
             if (navigation_mission_identifier !=
-                    mission_handle.execution.identifier):
+                    mission_handle.activity):
                 self.node.get_logger().info(
                     f'[{self.name}] MissionHandle has changed to '
-                    f'{mission_handle.execution.identifier}, interrupting '
+                    f'{mission_handle.activity}, interrupting '
                     f'navigation mission {navigation_mission_identifier}. '
                     f'Stopping original navigation mission loop.')
                 break
@@ -496,12 +496,12 @@ class RobotAdapterMiR:
 
         if (mission_queue_id is None and
                 navigation_mission_identifier !=
-                mission_handle.execution.identifier):
+                mission_handle.activity):
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to move to '
                 f'destination. Navigation step '
                 f'{navigation_mission_identifier} interrupted by new mission '
-                f'{mission_handle.execution.identifier}.'
+                f'{mission_handle.activity}.'
             )
             return
 
@@ -523,16 +523,16 @@ class RobotAdapterMiR:
         # Used for exiting while loop early in the event that for whatever
         # reason the robot starts performing a different mission, while the
         # original navigation mission is ongoing
-        navigation_mission_identifier = mission_handle.execution.identifier
+        navigation_mission_identifier = mission_handle.activity
         mission_queue_id = None
         count = 0
         retry_count = 10
         while count < retry_count and not mission_queue_id:
             if (navigation_mission_identifier !=
-                    mission_handle.execution.identifier):
+                    mission_handle.activity):
                 self.node.get_logger().info(
                     f'[{self.name}] MissionHandle has changed to '
-                    f'{mission_handle.execution.identifier}, interrupting '
+                    f'{mission_handle.activity}, interrupting '
                     f'navigation mission {navigation_mission_identifier}.'
                     f' Stopping original navigation mission loop.')
                 break
@@ -555,12 +555,12 @@ class RobotAdapterMiR:
 
         if (mission_queue_id is None and
                 navigation_mission_identifier !=
-                mission_handle.execution.identifier):
+                mission_handle.activity):
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to move to known '
                 f'position. Navigation step {navigation_mission_identifier} '
                 f'interrupted by new mission '
-                f'{mission_handle.execution.identifier}.'
+                f'{mission_handle.activity}.'
             )
             return
 
@@ -584,16 +584,16 @@ class RobotAdapterMiR:
         # Used for exiting while loop early in the event that for whatever
         # reason the robot starts performing a different mission, while the
         # original navigation mission is ongoing
-        docking_mission_identifier = mission_handle.execution.identifier
+        docking_mission_identifier = mission_handle.activity
         mission_queue_id = None
         count = 0
         retry_count = 10
         while count < retry_count and not mission_queue_id:
             if (docking_mission_identifier !=
-                    mission_handle.execution.identifier):
+                    mission_handle.activity):
                 self.node.get_logger().info(
                     f'[{self.name}] MissionHandle has changed to '
-                    f'{mission_handle.execution.identifier}, interrupting '
+                    f'{mission_handle.activity}, interrupting '
                     f'navigation mission {docking_mission_identifier}. '
                     f'Stopping original docking mission loop.')
                 break
@@ -626,12 +626,12 @@ class RobotAdapterMiR:
 
         if (mission_queue_id is None and
                 docking_mission_identifier !=
-                mission_handle.execution.identifier):
+                mission_handle.activity):
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to dock to '
                 f'destination. Docking step {docking_mission_identifier} '
                 f'interrupted by new mission '
-                f'{mission_handle.execution.identifier}.'
+                f'{mission_handle.activity}.'
             )
             return
 
@@ -666,7 +666,7 @@ class RobotAdapterMiR:
                     f'ignoring stop issued by RMF')
                 return
             if (mission.execution is not None and
-                    activity.is_same(mission.execution.identifier)):
+                    activity.is_same(mission.activity)):
                 self.node.get_logger().info(
                     f'[{self.name}] Stop requested from RMF!')
                 self.request_stop(mission)
