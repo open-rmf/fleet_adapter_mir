@@ -68,6 +68,22 @@ class MissionHandle:
         return None
 
 
+class ActionContext:
+    def __init__(self,
+                 node: Node,
+                 name: str,
+                 mir_api: MirAPI,
+                 update_handle,  # rmf_fleet_adapter.RobotUpdateHandle
+                 fleet_config: rmf_easy.FleetConfiguration,
+                 execution):
+        self.node = node
+        self.name = name
+        self.api = mir_api
+        self.update_handle = update_handle
+        self.fleet_config = fleet_config
+        self.execution = execution
+
+
 class RobotAdapterMiR:
     def __init__(
         self,
@@ -770,13 +786,13 @@ class RobotAdapterMiR:
 
         for _, action_factory in self.action_factories.items():
             if category in action_factory.actions:
-                # Create the relevant MirAction
-                action_obj = action_factory.make_action(
+                action_context = ActionContext(
                     self.node, self.name, self.api, self.update_handle,
-                    self.fleet_config)
-                # Begin performing the plugin action
-                action_obj.perform_action(category, description, execution)
-                # Keep track of the current action
+                    self.fleet_config, execution
+                )
+                action_obj = action_factory.perform_action(
+                    category, description, action_context
+                )
                 self.current_action = action_obj
                 return
 

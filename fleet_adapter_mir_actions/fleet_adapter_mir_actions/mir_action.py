@@ -18,28 +18,15 @@ from typing import Callable
 import rclpy
 import rclpy.node as Node
 import rmf_adapter.easy_full_control as rmf_easy
+from fleet_adapter_mir.robot_adapter_mir import ActionContext
 from fleet_adapter_mir.mir_api import MirAPI
 
 
 class MirAction(ABC):
-    def __init__(
-            self,
-            node,
-            name,
-            mir_api: MirAPI,
-            update_handle,
-            fleet_config,
-            action_config: dict | None,
-    ):
-        self.node = node
-        self.name = name
-        self.api = mir_api
-        self.update_handle = update_handle
-        self.fleet_config = fleet_config
-        self.action_config = action_config
-        self.actions = self.action_config.get('actions')
+    def __init__(self, context: ActionContext):
+        self.context = context
 
-        missions_json = self.action_config.get('missions_json')
+        missions_json = context.action_config.get('missions_json')
         if missions_json:
             with open(missions_json, 'r') as g:
                 action_missions = json.load(g)
@@ -47,28 +34,19 @@ class MirAction(ABC):
             # Check if these missions are already created on the robot
             missions_created = True
             for mission_name in action_missions.keys():
-                if mission_name not in self.api.known_missions:
+                if mission_name not in context.api.known_missions:
                     missions_created = False
                     break
             if missions_created:
                 return
 
             # Create these missions on the robot
-            self.api.create_missions(action_missions)
+            context.api.create_missions(action_missions)
             # Update mission actions stored in MirAPI
-            for mission, mission_data in self.api.known_missions.items():
-                self.api.mission_actions[mission] = \
-                    self.api.missions_mission_id_actions_get(
+            for mission, mission_data in context.api.known_missions.items():
+                context.api.mission_actions[mission] = \
+                    context.api.missions_mission_id_actions_get(
                         mission_data['guid'])
-
-    # This will be called whenever an action has begun
-    @abstractmethod
-    def perform_action(self,
-                       category: str,
-                       description: dict,
-                       execution):  # rmf_fleet_adapter.ActionExecution
-        # To be populated in the plugins
-        ...
 
     '''
     This method is called on every update by the robot adapter to monitor the
@@ -83,31 +61,31 @@ class MirAction(ABC):
                             cancel_success: Callable[[], None],
                             cancel_fail: Callable[[], None],
                             label: str = ''):
-        current_task_id = self.update_handle.more().current_task_id()
-        self.node.get_logger().info(
-            f'[{self.name}] Cancel task requested for [{current_task_id}]')
+        current_task_id = self.context.update_handle.more().current_task_id()
+        self.context.node.get_logger().info(
+            f'[{self.context.name}] Cancel task requested for [{current_task_id}]')
 
         def _on_cancel(result: bool):
             if result:
-                self.node.get_logger().info(
-                    f'[{self.name}] Found task [{current_task_id}], '
+                self.context.node.get_logger().info(
+                    f'[{self.context.name}] Found task [{current_task_id}], '
                     f'cancelling...')
                 cancel_success()
             else:
-                self.node.get_logger().info(
-                    f'[{self.name}] Failed to cancel task [{current_task_id}]')
+                self.context.node.get_logger().info(
+                    f'[{self.context.name}] Failed to cancel task [{current_task_id}]')
                 cancel_fail()
-        self.update_handle.more().cancel_task(
+        self.context.update_handle.more().cancel_task(
             current_task_id, [label], lambda result: _on_cancel(result))
 
 
 class MirActionFactory(ABC):
-    def __init__(self, action_config):
-        self.config = action_config
+    def __init__(self, action_config: dict):
         if 'actions' not in action_config:
             raise KeyError(
                 f'List of supported actions is not provided in the action '
                 f'config! Unable to instantiate an ActionFactory.')
+        self.action_config = action_config
         self.actions = action_config['actions']
 
     '''
@@ -115,11 +93,11 @@ class MirActionFactory(ABC):
     interact with an action.
     '''
     @abstractmethod
-    def make_action(self,
-                    node: Node,
-                    name: str,
-                    mir_api: MirAPI,
-                    update_handle,  # rmf_fleet_adapter.RobotUpdateHandle
-                    fleet_config: rmf_easy.FleetConfiguration) -> MirAction:
+    def perform_action(
+        self,
+        category: str,
+        description: dict,
+        context: ActionContext,
+    ) -> MirAction:
         # To be populated in the plugins
-        pass
+        ...

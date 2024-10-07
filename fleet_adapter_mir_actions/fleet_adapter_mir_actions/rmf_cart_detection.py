@@ -14,16 +14,12 @@
 
 import requests
 from urllib.error import HTTPError
+from fleet_adapter_mir.robot_adapter_mir import ActionContext
 
 
 class CartDetection:
-    def __init__(
-            self,
-            mir_api,
-            action_config
-    ):
-        self.api = mir_api
-        self.action_config = action_config
+    def __init__(self, context: ActionContext):
+        self.context = context
 
     def is_latch_open(self):
         '''
@@ -61,14 +57,14 @@ class CartDetection:
     # --------------------------------------------------------------------------
 
     def register_get(self, register: int):
-        if not self.api.connected:
+        if not self.context.api.connected:
             return None
         try:
             response = requests.get(
-                self.api.prefix + f'registers/{register}',
-                headers=self.api.headers,
-                timeout=self.api.timeout)
-            if self.api.debug:
+                self.context.api.prefix + f'registers/{register}',
+                headers=self.context.api.headers,
+                timeout=self.context.api.timeout)
+            if self.context.api.debug:
                 print(f"Response: {response.headers}")
             # Response value is string, return integer of value
             return int(response.json().get('value', 0))
@@ -80,16 +76,16 @@ class CartDetection:
             return None
 
     def io_module_guid_status_get(self, io_guid: str):
-        if not self.api.connected:
+        if not self.context.api.connected:
             return None
         if io_guid is None:
             return None
         try:
             response = requests.get(
-                self.api.prefix + f'io_modules/{io_guid}/status',
-                headers=self.api.headers,
-                timeout=self.api.timeout)
-            if self.api.debug:
+                self.context.api.prefix + f'io_modules/{io_guid}/status',
+                headers=self.context.api.headers,
+                timeout=self.context.api.timeout)
+            if self.context.api.debug:
                 print(f"Response: {response.headers}")
             if 'input_state' not in response.json():
                 return None
@@ -102,14 +98,14 @@ class CartDetection:
             return None
 
     def io_modules_get(self):
-        if not self.api.connected:
+        if not self.context.api.connected:
             return None
         try:
             response = requests.get(
-                self.api.prefix + f'io_modules',
-                headers=self.api.headers,
-                timeout=self.api.timeout)
-            if self.api.debug:
+                self.context.api.prefix + f'io_modules',
+                headers=self.context.api.headers,
+                timeout=self.context.api.timeout)
+            if self.context.api.debug:
                 print(f"Response: {response.headers}")
             # Response value is string, return integer of value
             return response.json()
