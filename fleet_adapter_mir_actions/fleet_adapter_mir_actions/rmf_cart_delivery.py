@@ -59,15 +59,19 @@ class Dropoff:
 
 
 class ActionFactory(MirActionFactory):
+    def __init__(self, action_config):
+        MirActionFactory.__init__(action_config)
+        # TODO(@xiyuoh) raise KeyError if config file is invalid
+        pass
+
     def make_action(self,
                     node,
                     name,
                     mir_api,
                     update_handle,
-                    fleet_config,
-                    action_config) -> MirAction:
+                    fleet_config) -> MirAction:
         return CartDelivery(
-            node, name, mir_api, update_handle, fleet_config, action_config)
+            node, name, mir_api, update_handle, fleet_config, self.config)
 
 
 class CartDelivery(MirAction):

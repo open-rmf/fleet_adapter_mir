@@ -70,8 +70,10 @@ class MirAction(ABC):
         # To be populated in the plugins
         ...
 
-    # This will be called on every update to check on the action's
-    # current state
+    '''
+    This method is called on every update by the robot adapter to monitor the
+    progress and completion of the action
+    '''
     @abstractmethod
     def update_action(self):
         # To be populated in the plugins
@@ -100,15 +102,20 @@ class MirAction(ABC):
 
 
 class MirActionFactory(ABC):
-    def __init__(self):
-        pass
+    def __init__(self, action_config):
+        self.config = action_config
+        self.actions = action_config['actions']
 
+    '''
+    This method creates a MirAction object for the robot adapter to begin and
+    interact with an action.
+    '''
+    @abstractmethod
     def make_action(self,
                     node: Node,
                     name: str,
                     mir_api: MirAPI,
                     update_handle,  # rmf_fleet_adapter.RobotUpdateHandle
-                    fleet_config: rmf_easy.FleetConfiguration,
-                    action_config) -> MirAction:
+                    fleet_config: rmf_easy.FleetConfiguration) -> MirAction:
         # To be populated in the plugins
         pass

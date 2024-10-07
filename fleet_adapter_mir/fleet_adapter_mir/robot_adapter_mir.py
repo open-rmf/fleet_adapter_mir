@@ -142,8 +142,27 @@ class RobotAdapterMiR:
         # Track the current ongoing action
         self.current_action = None
 
-        # Store all the configured plugin action configs
-        self.plugin_config = plugin_config
+        # Import and store plugin actions and action factories
+        self.action_factories = {}
+        for plugin_name, action_config in plugin_config.items():
+            try:
+                module = action_config['module']
+                plugin = importlib.import_module(module)
+                action_factory = plugin.ActionFactory(action_config)
+                self.action_factories[plugin_name] = action_factory
+            except KeyError:
+                self.node.get_logger().info(
+                    f'Unable to create ActionFactory for {plugin_name}! '
+                    f'Configured plugin config is invalid. '
+                    f'Robot [{self.name}] will not be able to perform '
+                    f'actions associated with this plugin.'
+                )
+            except ImportError:
+                self.node.get_logger().info(
+                    f'Unable to import module for {plugin_name}! '
+                    f'Robot [{self.name}] will not be able to perform '
+                    f'actions associated with this plugin.'
+                )
 
     @property
     def activity(self):
@@ -749,16 +768,12 @@ class RobotAdapterMiR:
             execution.finished()
             return
 
-        for plugin_name, config in self.plugin_config.items():
-            actions = config['actions']
-            if category in actions:
-                # Import relevant plugin
-                module = config['module']
-                plugin = importlib.import_module(module)
+        for _, action_factory in self.action_factories.items():
+            if category in action_factory.actions:
                 # Create the relevant MirAction
-                action_obj = plugin.ActionFactory().make_action(
+                action_obj = action_factory.make_action(
                     self.node, self.name, self.api, self.update_handle,
-                    self.fleet_config, config)
+                    self.fleet_config)
                 # Begin performing the plugin action
                 action_obj.perform_action(category, description, execution)
                 # Keep track of the current action
