@@ -61,8 +61,49 @@ class Dropoff:
 class ActionFactory(MirActionFactory):
     def __init__(self, action_config):
         MirActionFactory.__init__(action_config)
-        # TODO(@xiyuoh) raise KeyError if config file is invalid
-        pass
+        # Raise error if config file is invalid
+        # Note(@xiyuoh) Using if-else to check for valid keys in the action
+        #               config is not the most scalable. Consider other ways to
+        #               do this.
+        if 'cart_detection_module' not in action_config:
+            raise KeyError(
+                f'CartDelivery MirAction requires a cart detection module, but '
+                f'path to [cart_detection_module] is not provided in the '
+                f'action config! Unable to instantiate an ActionFactory.')
+        elif 'marker_types' not in action_config:
+            raise KeyError(
+                f'CartDelivery MirAction requires configured marker types, but '
+                f'[marker_types] not provided in the action config! '
+                f'Unable to instantiate an ActionFactory.')
+        elif 'missions' not in action_config:
+            raise KeyError(
+                f'CartDelivery MirAction requires configured missions, but '
+                f'[missions] not provided in the action config! '
+                f'Unable to instantiate an ActionFactory.')
+        # Check if the required mission names have been configured
+        # TODO(@xiyuoh) Remove requirement for configuring dock_to_cart and
+        #               exit lot as they will be created on the robot by the
+        #               fleet adapter, hence will not need to be configured
+        elif 'dock_to_cart' not in action_config['missions']:
+            raise KeyError(
+                f'CartDelivery MirAction requires the configured MiR mission '
+                f'name for [dock_to_cart], but it is not provided in the action '
+                f'config! Unable to instantiate an ActionFactory.')
+        elif 'pickup' not in action_config['missions']:
+            raise KeyError(
+                f'CartDelivery MirAction requires the configured MiR mission '
+                f'name for [pickup], but it is not provided in the action '
+                f'config! Unable to instantiate an ActionFactory.')
+        elif 'dropoff' not in action_config['missions']:
+            raise KeyError(
+                f'CartDelivery MirAction requires the configured MiR mission '
+                f'name for [dropoff], but it is not provided in the action '
+                f'config! Unable to instantiate an ActionFactory.')
+        elif 'exit_lot' not in action_config['missions']:
+            raise KeyError(
+                f'CartDelivery MirAction requires the configured MiR mission '
+                f'name for [exit_lot], but it is not provided in the action '
+                f'config! Unable to instantiate an ActionFactory.')
 
     def make_action(self,
                     node,
@@ -110,10 +151,7 @@ class CartDelivery(MirAction):
                 self.action_config['marker_types']['cart'])
 
         # Import CartDetection module if provided
-        detection_module = self.action_config.get('cart_detection_module')
-        assert (detection_module is not None,
-                'CartDetection module is required for CartDelivery plugin, ' +
-                'but it is not found!')
+        detection_module = self.action_config['cart_detection_module']
         detection_plugin = importlib.import_module(detection_module)
         self.cart_detection = \
             detection_plugin.CartDetection(mir_api, action_config)

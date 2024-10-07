@@ -104,6 +104,10 @@ class MirAction(ABC):
 class MirActionFactory(ABC):
     def __init__(self, action_config):
         self.config = action_config
+        if 'actions' not in action_config:
+            raise KeyError(
+                f'List of supported actions is not provided in the action '
+                f'config! Unable to instantiate an ActionFactory.')
         self.actions = action_config['actions']
 
     '''
