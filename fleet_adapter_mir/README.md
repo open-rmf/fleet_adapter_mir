@@ -87,7 +87,6 @@ The `rmf_cart_delivery` plugin allows users to submit pickup and dropoff tasks t
 Some relevant MiR missions (docking, exit, update footprint) will be automatically created on the MiR on startup. These missions are used to facilitate the pickup and dropoff activities and can be found in the plugin config under `missions`. They are:
 - `rmf_dock_to_cart`: Docks robot under the cart
 - `rmf_exit_lot`: Calls the robot to exit from under the cart
-- `rmf_update_footprint`: Updates the robot footprint
 
 They are defined and stored in the `rmf_cart_missions.json` file and do not require any further configuration.
 

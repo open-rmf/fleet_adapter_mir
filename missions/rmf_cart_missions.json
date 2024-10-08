@@ -64,18 +64,5 @@
       ],
       "action_type": "docking"
     }
-  ],
-  "rmf_update_footprint": [
-    {
-      "priority": 1,
-      "parameters": [
-        {
-          "value": "some_placeholder_footprint_guid",
-          "input_name": "footprint",
-          "id": "footprint"
-        }
-      ],
-      "action_type": "set_footprint"
-    }
   ]
 }

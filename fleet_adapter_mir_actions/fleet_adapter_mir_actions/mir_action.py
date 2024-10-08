@@ -41,7 +41,8 @@ class MirAction(ABC):
                             label: str = ''):
         current_task_id = self.context.update_handle.more().current_task_id()
         self.context.node.get_logger().info(
-            f'[{self.context.name}] Cancel task requested for [{current_task_id}]')
+            f'[{self.context.name}] Cancel task requested for '
+            f'[{current_task_id}]')
 
         def _on_cancel(result: bool):
             if result:
@@ -51,7 +52,8 @@ class MirAction(ABC):
                 cancel_success()
             else:
                 self.context.node.get_logger().info(
-                    f'[{self.context.name}] Failed to cancel task [{current_task_id}]')
+                    f'[{self.context.name}] Failed to cancel task '
+                    f'[{current_task_id}]')
                 cancel_fail()
         self.context.update_handle.more().cancel_task(
             current_task_id, [label], lambda result: _on_cancel(result))
@@ -72,8 +74,8 @@ class MirActionFactory(ABC):
         self.create_missions(missions_json)
 
     '''
-    This method can be used to verify whether this MirActionFactory supports the
-    configured action.
+    This method can be used to verify whether this MirActionFactory supports
+    the configured action.
     '''
     @abstractmethod
     def supports_action(self, category: str) -> bool:

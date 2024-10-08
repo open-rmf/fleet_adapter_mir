@@ -127,15 +127,16 @@ class TaskRequester(Node):
                               "activities": pickup_action_activity}}},
             # Cancellation behavior for pickup phase: dropoff cart if robot has
             # completed the pickup cart action.
-            {"on_cancel": {"category": "sequence",
-                           "description": [{
-                               "category": "perform_action",
-                               "description": {
-                                   "unix_millis_action_duration_estimate": 60000,
-                                   "category": "delivery_dropoff",
-                                   "description": {}
-                               }
-                           }]}})
+            {"on_cancel": {
+                "category": "sequence",
+                "description": [{
+                    "category": "perform_action",
+                    "description": {
+                        "unix_millis_action_duration_estimate": 60000,
+                        "category": "delivery_dropoff",
+                        "description": {}
+                    }
+                }]}})
         # GoToPlace activity
         go_to_dropoff_activity = [{
             "category": "go_to_place",
@@ -145,21 +146,23 @@ class TaskRequester(Node):
             {"activity": {"category": "sequence",
                           "description": {
                               "activities": go_to_dropoff_activity}}},
+            # NOTE(@xiyuoh) If the given site is unsafe for the robot to
+            # dropoff a cart at random locations, integrators may choose to add
+            # on to this cancellation behavior to ensure that the robot travels
+            # to a safe waypoint before performing the cancellation dropoff.
+
             # Cancellation behavior for GoToPlace phase: dropoff cart at the
             # current spot if robot is detected to be carrying a cart.
-            {"on_cancel": {"category": "sequence",
-                           "description": [{
-                               "category": "perform_action",
-                               "description": {
-                                   "unix_millis_action_duration_estimate": 60000,
-                                   "category": "delivery_dropoff",
-                                   "description": {}
-                               }
-                           }]}})
-            # NOTE(@xiyuoh) If the given site is unsafe for the robot to dropoff
-            # a cart at random locations, integrators may choose to add on to
-            # this cancellation behavior to ensure that the robot travels to a
-            # safe waypoint before performing the cancellation dropoff.
+            {"on_cancel": {
+                "category": "sequence",
+                "description": [{
+                    "category": "perform_action",
+                    "description": {
+                        "unix_millis_action_duration_estimate": 60000,
+                        "category": "delivery_dropoff",
+                        "description": {}
+                    }
+                }]}})
         # Dropoff activity
         dropoff_action_activity = [{
             "category": "perform_action",

@@ -60,13 +60,13 @@ class ActionFactory(MirActionFactory):
         # config is not the most scalable. Consider other ways to do this.
         if 'cart_detection_module' not in context.action_config:
             raise KeyError(
-                f'CartDelivery MirAction requires a cart detection module, but '
-                f'path to [cart_detection_module] is not provided in the '
+                f'CartDelivery MirAction requires a cart detection module, '
+                f'but path to [cart_detection_module] is not provided in the '
                 f'action config! Unable to instantiate an ActionFactory.')
         elif 'marker_types' not in context.action_config:
             raise KeyError(
-                f'CartDelivery MirAction requires configured marker types, but '
-                f'[marker_types] not provided in the action config! '
+                f'CartDelivery MirAction requires configured marker types, '
+                f'but [marker_types] not provided in the action config! '
                 f'Unable to instantiate an ActionFactory.')
         elif 'missions' not in context.action_config:
             raise KeyError(
@@ -78,8 +78,8 @@ class ActionFactory(MirActionFactory):
                 context.action_config['missions']['dock_to_cart'] is None):
             raise KeyError(
                 f'CartDelivery MirAction requires the configured MiR mission '
-                f'name for [dock_to_cart], but it is not provided in the action '
-                f'config! Unable to instantiate an ActionFactory.')
+                f'name for [dock_to_cart], but it is not provided in the '
+                f'action config! Unable to instantiate an ActionFactory.')
         elif ('pickup' not in context.action_config['missions'] or
                 context.action_config['missions']['pickup'] is None):
             raise KeyError(
@@ -202,7 +202,8 @@ class CartPickup(MirAction):
 
         # Start state machine check
         now = self.context.node.get_clock().now().nanoseconds / 1e9
-        self.context.node.get_logger().debug(f'PickupState: {pickup.state.name}')
+        self.context.node.get_logger().debug(
+            f'PickupState: {pickup.state.name}')
         match pickup.state:
             case PickupState.AT_PICKUP:
                 # Send rmf_dock_to_cart mission
@@ -213,22 +214,24 @@ class CartPickup(MirAction):
                         f'No shelf position [{mir_pos}] found on robot '
                         f'[{self.context.name}], cancelling task')
                     self.cancel_task(
-                        label=f'MiR position is not found on the robot, ' + \
+                        label=f'MiR position is not found on the robot, '
                         f'unable to pickup.'
                     )
                     pickup.state = PickupState.TASK_CANCELLED
                     return
                 cart_marker_guid = mir_pos['guid']
-                cart_marker_param = self.context.api.get_mission_params_with_value(
-                    self.dock_to_cart_mission,
-                    'docking',
-                    'cart_marker',
-                    cart_marker_guid)
-                marker_type_param = self.context.api.get_mission_params_with_value(
-                    self.dock_to_cart_mission,
-                    'docking',
-                    'cart_marker_type',
-                    self.cart_marker_type_guid)
+                cart_marker_param = \
+                    self.context.api.get_mission_params_with_value(
+                        self.dock_to_cart_mission,
+                        'docking',
+                        'cart_marker',
+                        cart_marker_guid)
+                marker_type_param = \
+                    self.context.api.get_mission_params_with_value(
+                        self.dock_to_cart_mission,
+                        'docking',
+                        'cart_marker_type',
+                        self.cart_marker_type_guid)
                 mission_params = cart_marker_param + marker_type_param
                 mission_queue_id = self.context.api.queue_mission_by_name(
                     self.dock_to_cart_mission, mission_params)
@@ -241,17 +244,17 @@ class CartPickup(MirAction):
                 pickup.mission = Mission(mission_queue_id, now)
                 pickup.state = PickupState.DOCK_REQUESTED
                 self.context.node.get_logger().info(
-                    f'[{self.context.name}] Dock to cart mission requested with '
-                    f'mission queue id {mission_queue_id}')
+                    f'[{self.context.name}] Dock to cart mission requested '
+                    f'with mission queue id {mission_queue_id}')
 
             case PickupState.DOCK_REQUESTED:
                 # Make sure that there is an rmf_dock_to_cart mission issued
                 if not pickup.mission:
                     self.context.node.get_logger().info(
-                        f'Robot [{self.context.name}] is indicated to be at the '
-                        f'DOCK_REQUESTED state but no mission queue ID stored '
-                        f'for this docking mission! Returning to AT_PICKUP '
-                        f'state.')
+                        f'Robot [{self.context.name}] is indicated to be at '
+                        f'the DOCK_REQUESTED state but no mission queue ID '
+                        f'stored for this docking mission! Returning to '
+                        f'AT_PICKUP state.')
                     pickup.state = PickupState.AT_PICKUP
                     return
                 # Mission completed, move onto the next state
@@ -273,7 +276,8 @@ class CartPickup(MirAction):
                 # Mission timeout, cart not found
                 if seconds_passed > self.search_timeout:
                     # Delete mission from mir first
-                    self.context.api.mission_queue_id_delete(pickup.mission.queue_id)
+                    self.context.api.mission_queue_id_delete(
+                        pickup.mission.queue_id)
                     # Regardless of whether the robot completed docking
                     # properly, we move to the next state to check
                     self.context.node.get_logger().info(
@@ -286,7 +290,8 @@ class CartPickup(MirAction):
 
             case PickupState.DOCK_COMPLETED:
                 # Check if robot docked under the correct cart
-                cart_check = self.cart_detection.is_correct_cart(pickup.cart_id)
+                cart_check = \
+                    self.cart_detection.is_correct_cart(pickup.cart_id)
                 if cart_check:
                     # If cart is correct, send pickup mission
                     mission_queue_id = self.context.api.queue_mission_by_name(
@@ -300,15 +305,15 @@ class CartPickup(MirAction):
                     pickup.mission = Mission(mission_queue_id, now)
                     pickup.latching = True
                     self.context.node.get_logger().info(
-                        f'Robot [{self.context.name}] found the correct cart, pickup '
-                        f'mission requested with mission queue id '
+                        f'Robot [{self.context.name}] found the correct cart, '
+                        f'pickup mission requested with mission queue id '
                         f'{mission_queue_id}')
                     pickup.state = PickupState.PICKUP_REQUESTED
                 elif cart_check is None:
                     # If cart is missing, cancel this task
                     self.context.node.get_logger().info(
-                        f'Robot [{self.context.name}] was unable to dock under any '
-                        f'carts, please check that cart is present. '
+                        f'Robot [{self.context.name}] was unable to dock '
+                        f'under any carts, please check that cart is present. '
                         f'Cancelling task.')
                     self.cancel_task(
                         label=f'Dock to cart failed, unable to perform pickup.'
@@ -318,8 +323,8 @@ class CartPickup(MirAction):
                     # If cart is wrong, cancel this task also but after we
                     # exit from the lot
                     self.context.node.get_logger().info(
-                        f'Robot [{self.context.name}] found the wrong cart, exiting '
-                        f'lot and cancelling task.')
+                        f'Robot [{self.context.name}] found the wrong cart, '
+                        f'exiting lot and cancelling task.')
                     if not self.exit_lot():
                         return
                     self.cancel_task(
@@ -345,17 +350,20 @@ class CartPickup(MirAction):
 
             case PickupState.TASK_CANCELLED:
                 self.context.node.get_logger().info(
-                    f'Robot [{self.context.name}] is in pickup cancelled state.')
+                    f'Robot [{self.context.name}] is in pickup cancelled '
+                    f'state.')
                 # If some MiR mission is in progress, we abort it unless
                 # it is latching
                 if pickup.mission and not self.context.api.mission_completed(
                         pickup.mission.queue_id):
                     if pickup.latching:
                         self.context.node.get_logger().info(
-                            f'Robot [{self.context.name}] is performing latching, '
-                            f'cancelling task after this action is complete.')
+                            f'Robot [{self.context.name}] is performing '
+                            f'latching, cancelling task after this action is '
+                            f'complete.')
                         return False
-                    self.context.api.mission_queue_id_delete(pickup.mission.queue_id)
+                    self.context.api.mission_queue_id_delete(
+                        pickup.mission.queue_id)
                     pickup.mission = None
                 # Clear any errors
                 self.context.api.clear_error()
@@ -363,14 +371,15 @@ class CartPickup(MirAction):
 
                 # NOTE(@xiyuoh) If this task is cancelled in the middle of a
                 # cart pickup, the dispatch_delivery task is built with a
-                # cancellation behavior to ensure that this robot drops the cart
-                # off and is able to continue with its next task safely
+                # cancellation behavior to ensure that this robot drops the
+                # cart off and is able to continue with its next task safely
                 return True
 
         return False
 
     def exit_lot(self):
-        mission_queue_id = self.context.api.queue_mission_by_name(self.exit_mission)
+        mission_queue_id = \
+            self.context.api.queue_mission_by_name(self.exit_mission)
         if not mission_queue_id:
             self.context.node.get_logger().info(
                 f'Unable to queue exit lot mission for robot '
@@ -383,6 +392,7 @@ class CartPickup(MirAction):
         def _cancel_success():
             if self.pickup:
                 self.pickup.state = PickupState.TASK_CANCELLED
+
         def _cancel_fail():
             pass
         self.cancel_current_task(_cancel_success, _cancel_fail, label)
@@ -437,18 +447,19 @@ class CartDropoff(MirAction):
             self.context.node.get_logger().info(
                 f'[delivery_dropoff] action is killed/canceled! Proceeding to '
                 f'queue cart dropoff mission to ensure that robot has fully '
-                f'released any attached cart and is safe to perform subsequent '
-                f'tasks.')
+                f'released any attached cart and is safe to perform '
+                f'subsequent tasks.')
 
-        # If skip_dropoff flag is raised, check if the robot is under a cart and
-        # queue exit lot mission accordingly
+        # If skip_dropoff flag is raised, check if the robot is under a cart
+        # and queue exit lot mission accordingly
         if self.skip_dropoff:
             if self.cart_detection.is_under_cart():
                 self.context.node.get_logger().info(
                     f'Robot [{self.context.name}] is detected to be under a '
                     f'cart, exiting lot...'
                 )
-                if not self.context.api.queue_mission_by_name(self.exit_mission):
+                if not self.context.api.queue_mission_by_name(
+                        self.exit_mission):
                     self.context.node.get_logger().info(
                         f'Unable to queue exit lot mission for robot '
                         f'[{self.context.name}], retrying on the next update'
@@ -469,8 +480,8 @@ class CartDropoff(MirAction):
             now = self.context.node.get_clock().now().nanoseconds / 1e9
             dropoff.mission = Mission(mission_queue_id, now)
             self.context.node.get_logger().info(
-                f'[{self.context.name}] Dropoff mission requested with mission queue '
-                f'id {mission_queue_id}')
+                f'[{self.context.name}] Dropoff mission requested with '
+                f'mission queue id {mission_queue_id}')
 
         # Mission queued, check completion
         else:
