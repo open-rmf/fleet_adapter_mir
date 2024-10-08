@@ -50,7 +50,8 @@ class MirAction(ABC):
 
     '''
     This method is called on every update by the robot adapter to monitor the
-    progress and completion of the action
+    progress and completion of the action.
+    Return True if the action is completed, else False.
     '''
     @abstractmethod
     def update_action(self):

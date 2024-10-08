@@ -95,7 +95,6 @@ class TaskRequester(Node):
         now.sec = now.sec + self.args.start_time
         start_time = now.sec * 1000 + round(now.nanosec/10**6)
         request["unix_millis_earliest_start_time"] = start_time
-        # todo(YV): Fill priority after schema is added
 
         # Define task request category
         request["category"] = "compose"
@@ -125,7 +124,18 @@ class TaskRequester(Node):
         description["phases"].append(
             {"activity": {"category": "sequence",
                           "description": {
-                              "activities": pickup_action_activity}}})
+                              "activities": pickup_action_activity}}},
+            # Cancellation behavior for pickup phase: dropoff cart if robot has
+            # completed the pickup cart action.
+            {"on_cancel": {"category": "sequence",
+                           "description": [{
+                               "category": "perform_action",
+                               "description": {
+                                   "unix_millis_action_duration_estimate": 60000,
+                                   "category": "delivery_dropoff",
+                                   "description": {}
+                               }
+                           }]}})
         # GoToPlace activity
         go_to_dropoff_activity = [{
             "category": "go_to_place",
@@ -134,7 +144,22 @@ class TaskRequester(Node):
         description["phases"].append(
             {"activity": {"category": "sequence",
                           "description": {
-                              "activities": go_to_dropoff_activity}}})
+                              "activities": go_to_dropoff_activity}}},
+            # Cancellation behavior for GoToPlace phase: dropoff cart at the
+            # current spot if robot is detected to be carrying a cart.
+            {"on_cancel": {"category": "sequence",
+                           "description": [{
+                               "category": "perform_action",
+                               "description": {
+                                   "unix_millis_action_duration_estimate": 60000,
+                                   "category": "delivery_dropoff",
+                                   "description": {}
+                               }
+                           }]}})
+            # NOTE(@xiyuoh) If the given site is unsafe for the robot to dropoff
+            # a cart at random locations, integrators may choose to add on to
+            # this cancellation behavior to ensure that the robot travels to a
+            # safe waypoint before performing the cancellation dropoff.
         # Dropoff activity
         dropoff_action_activity = [{
             "category": "perform_action",
