@@ -1,27 +1,17 @@
 ## Usage
 
-### Pre-defined RMF variable move mission
+### Creating MiR missions for RMF
 
-Users are required to define a custom mission with a single `Move` action, which has the variables `x`, `y` and `yaw`, attached to the coordinates `x`, `y` and `yaw` respectively. This is the mission that the fleet adapter will use to send move commands to the robot, while modifying the desired `x`, `y` and `yaw` values.
+RMF relies on a number of MiR missions  to command the robot to move, perform map switches, and dock into chargers. These missions are pre-defined in `rmf_missions.json` and can be created automatically on the robots at startup.
 
-For more information on how to set up missions, actions and variables, please refer to [official guide documents](https://www.manualslib.com/manual/1941073/Mir-Mir250.html?page=150#manual) (this is for the MiR250).
+For more details about the missions needed and created for RMF, refer to the `mir_missions` documentation found [here](https://github.com/open-rmf/fleet_adapter_mir/blob/main/docs/mir_missions.md). It will be helpful to go through the missions mentioned in the section before setting up your building map.
 
-The name of this custom mission, will need to be passed to the fleet adapter through the configuration file, under `rmf_move_mission`, for each robot's `mir_config`.
+The next section will demonstrate how to parse this JSON file to the fleet adapter for MiR mission creation.
 
-```yaml
-robots:
-  ROBOT_NAME:
-    mir_config:
-      ...
-      rmf_move_mission: "CUSTOM_MISSION_NAME"
-      ...
-```
 
 ### Example Entry Point
 
-An example usage of the implemented adapter can be found in the `fleet_adapter_mir/fleet_adapter_mir.py` file. It takes in a configuration file and navigation graph, sets everything up, and spins up the fleet adapter.
-
-Call it like so:
+To run the fleet adapter with full capabilities, (it will requirqe an `rmf_traffic_ros2` schedule node to be active, and the MiR REST server to be available):
 
 ```bash
 # Source the workspace
@@ -30,28 +20,21 @@ source ~/mir_ws/install/setup.bash
 # Get help
 ros2 run fleet_adapter_mir fleet_adapter_mir -h
 
-# Run in dry-run mode. Disables ROS 2 publishing and MiR REST calls
+# Spin up the fleet adapter
 cd ~/mir_ws/src/fleet_adapter_mir/configs
-ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yaml -d
-```
-
-Alternatively, if you want to run everything with full capabilities, (though note that it will require an `rmf_traffic_ros2` schedule node to be active, and the MiR REST server to be available)
-
-```bash
 ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yaml
 ```
 
-If you have not configured the necessary RMF missions on the MiR, you may parse the relevant JSON filepaths when launching the fleet adapter node. On startup, the fleet adapter will create these missions via MiR REST API
+If you have not configured the necessary RMF missions on the MiR, you may parse in the filepath to `rmf_missions.json` when launching the fleet adapter node. On startup, the fleet adapter will create these missions via MiR REST API. If a mission with the same Mission Group and Name already exists on the robot, the fleet adapter will skip creating it.
 
 ```bash
 ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yaml -a ../missions/rmf_missions.json
 ```
 
 
-
 ### Configuration
 
-An example configuration file, `mir_config.yaml` has been provided. It has been generously commented, and in the cases where it has not, the parameter names are self-explanatory enough.
+An example configuration file, `mir_config.yaml` has been provided. It has been generously commented, and in the cases where it has not, the parameter names are meant to be self-explanatory.
 
 
 
@@ -63,47 +46,34 @@ To use the `rmf_dock_and_charge` mission for charging, use the traffic-editor to
 ```json
 {"description": {"end_waypoint": "charger_name"}, "mission_name": "rmf_dock_and_charge"}
 ```
-Where you replace `end_waypoint` with the name of your MiR charger.
+Where you replace `charger_name` with the name of your MiR charger.
 
 
-**MiR positions**
+**MiR Positions**
 
-Upon launch, the MiR fleet adapter recognizes MiR positions with identical names to RMF waypoints to be the same location. Hence, when a navigation command is submitted for the robot to a specific waypoint, if this waypoint name also exists as a robot position on the MiR, the fleet adapter would send it directly to the MiR position even if the coordinates are different.
+Upon launch, the MiR fleet adapter recognizes MiR Positions with identical names to RMF waypoints to be the same location. Hence, when a navigation command is submitted for the robot to a specific waypoint, if this waypoint name also exists as a robot position on the MiR, the fleet adapter would send it directly to the MiR Position even if the coordinates are different.
+
+Integrators should assume responsibility of making sure that the MiR Positions created on the robots and RMF waypoints with identical names are located reasonably close to one another.
 
 
-### Plugins
+**Guided MiR movement**
 
-The MiR is capable of performing various types of custom missions and tasks. You can now easily set up plugins offered in this repo instead of writing your own perform action for common use cases. These plugins offered are available under the `fleet_adapter_mir_actions` package.
+Robot travel through tight spaces can be especially tricky. Examples include lift entry, lift exit, or any situation where you might want the robot to move in a straight line over a short distance. One of the default MiR missions created with `rmf_missions.json`, `rmf_follow_line`, helps to ensure that the robot moves in a straight line without the need to create multiple RMF waypoints.
 
-For cart deliveries from point A to B:
+Using lift entry as an example scenario, you can make use of `rmf_follow_line` this way:
+1. Create a MiR robot position right outside the lift, facing inwards. Let's call this MiR Position `Outside_Lift`.
+2. Create a MiR robot position inside the lift, facing inwards. This position corresponds to the RMF waypoint inside this lift on this level. Let's call this MiR Position `Inside_Lift`. It helps immensely for both MiR Positions to form a straight line with their `Orientation` values facing the same direction as this line.
+3. On the traffic-editor, set the `dock_name` property of the lift waypoint to a json description like this:
+   ```json
+   {"description": {"start_waypoint": "Outside_Lift", "end_waypoint": "Inside_Lift"}, "mission_name": "rmf_follow_line", "dock_name": "enter_lift"}
+   ```
+When the robot is called to enter the lift, regardless of where the robot was located before the mission starts, it will first move to `Outside_Lift`, facing directly towards the lift entry position, and then move to `Inside_Lift`.
 
-**rmf_cart_delivery**
+With this mission, integrators have a little more control over the robot movement during travel through tight spaces.
 
-The `rmf_cart_delivery` plugin allows users to submit pickup and dropoff tasks to MiR integrated with RMF. The workflow of the task is as follows:
-1. RMF will send the robot to the pickup lot
-2. The robot will attempt to dock under a cart in the pickup lot
-3. If the robot successfully docks under the correct cart, it will proceed to deliver it to a dropoff point. If the cart is missing or is not the desired cart, RMF will cancel the task.
 
-Some relevant MiR missions (docking, exit, update footprint) will be automatically created on the MiR on startup. These missions are used to facilitate the pickup and dropoff activities and can be found in the plugin config under `missions`. They are:
-- `rmf_dock_to_cart`: Docks robot under the cart
-- `rmf_exit_lot`: Calls the robot to exit from under the cart
+### `MirAction` Plugins
 
-They are defined and stored in the `rmf_cart_missions.json` file and do not require any further configuration.
+The MiR is capable of performing various types of custom missions and tasks. You can now easily set up plugins offered in this repo instead of writing your own perform action for common use cases. The plugins offered are available under the `fleet_adapter_mir_actions` package.
 
-However, since there are various types of latching methods available for different MiR models, users will need to set up their custom pickup and dropoff missions on the MiR, as well as implement their own `CartDetection` plugin module with the appropriate APIs to detect latching states.
-1. Create 2 missions on the MiR:
-   - `rmf_pickup_cart`: Triggers the robot's latching module to open
-   - `rmf_dropoff_cart`: Triggers the robot's latching module to close and release the cart, then exit from under the cart (relative move -1 metre in the X-direction)
-2. Fill in the MiR mission names in the plugin config under `missions`. The default mission names are `rmf_pickup_cart` and `rmf_dropoff_cart`.
-3. Fill in the footprints and marker types to be used for your specific robot and cart in the plugin config.
-4. Create your own `CartDetection` plugin. You may use `rmf_cart_detection.py` as a reference for how your plugin module should be implemented. Fill in the logic to check whether the robot's latching module is open in blanks marked `# IMPLEMENT YOUR CODE HERE`. Some API calls to check the MiR's PLC registers and IO modules are provided in case you may want to use them.
-5. In the plugin config, update the `cart_detection_module` field to point to your own written module.
-
-To submit a cart delivery task, you may use the `dispatch_delivery` task script found in the `fleet_adapter_mir_tasks` package:
-```bash
-ros2 run fleet_adapter_mir_tasks dispatch_delivery -g go_to_waypoint -p pickup_lot -d dropoff_lot -c some_cart_id
-```
-- `-g`: Takes in an existing waypoint name for the robot to travel to before performing the pickup
-- `-p`: Name of the pickup lot. This name should be identical to the shelf position configured on the MiR.
-- `-d`: Name of the dropoff lot. This name should be identical to the robot or shelf position configured on the MiR.
-- `-c`: Optional cart identifier for the fleet adapter to assess whether the cart is correct for pickup. 
+You may refer to the `mir_actions` documentation found [here](https://github.com/open-rmf/fleet_adapter_mir/blob/main/docs/mir_actions.md) for a list of action plugins offered and how to set them up.
