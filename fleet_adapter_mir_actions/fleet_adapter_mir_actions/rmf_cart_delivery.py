@@ -53,79 +53,96 @@ class Dropoff:
 
 
 class ActionFactory(MirActionFactory):
-    def __init__(self, action_config: dict):
-        MirActionFactory.__init__(action_config)
+    def __init__(self, context: ActionContext):
+        MirActionFactory.__init__(context)
         # Raise error if config file is invalid
         # NOTE(@xiyuoh) Using if-else to check for valid keys in the action
-        #               config is not the most scalable. Consider other ways to
-        #               do this.
-        if 'cart_detection_module' not in action_config:
+        # config is not the most scalable. Consider other ways to do this.
+        if 'cart_detection_module' not in context.action_config:
             raise KeyError(
                 f'CartDelivery MirAction requires a cart detection module, but '
                 f'path to [cart_detection_module] is not provided in the '
                 f'action config! Unable to instantiate an ActionFactory.')
-        elif 'marker_types' not in action_config:
+        elif 'marker_types' not in context.action_config:
             raise KeyError(
                 f'CartDelivery MirAction requires configured marker types, but '
                 f'[marker_types] not provided in the action config! '
                 f'Unable to instantiate an ActionFactory.')
-        elif 'missions' not in action_config:
+        elif 'missions' not in context.action_config:
             raise KeyError(
                 f'CartDelivery MirAction requires configured missions, but '
                 f'[missions] not provided in the action config! '
                 f'Unable to instantiate an ActionFactory.')
         # Check if the required mission names have been configured
-        # TODO(@xiyuoh) Remove requirement for configuring dock_to_cart and
-        #               exit lot as they will be created on the robot by the
-        #               fleet adapter, hence will not need to be configured
-        elif ('dock_to_cart' not in action_config['missions'] or
-                action_config['missions']['dock_to_cart'] is None):
+        elif ('dock_to_cart' not in context.action_config['missions'] or
+                context.action_config['missions']['dock_to_cart'] is None):
             raise KeyError(
                 f'CartDelivery MirAction requires the configured MiR mission '
                 f'name for [dock_to_cart], but it is not provided in the action '
                 f'config! Unable to instantiate an ActionFactory.')
-        elif ('pickup' not in action_config['missions'] or
-                action_config['missions']['pickup'] is None):
+        elif ('pickup' not in context.action_config['missions'] or
+                context.action_config['missions']['pickup'] is None):
             raise KeyError(
                 f'CartDelivery MirAction requires the configured MiR mission '
                 f'name for [pickup], but it is not provided in the action '
                 f'config! Unable to instantiate an ActionFactory.')
-        elif ('dropoff' not in action_config['missions'] or
-                action_config['missions']['dropoff'] is None):
+        elif ('dropoff' not in context.action_config['missions'] or
+                context.action_config['missions']['dropoff'] is None):
             raise KeyError(
                 f'CartDelivery MirAction requires the configured MiR mission '
                 f'name for [dropoff], but it is not provided in the action '
                 f'config! Unable to instantiate an ActionFactory.')
-        elif ('exit_lot' not in action_config['missions'] or
-                action_config['missions']['exit_lot'] is None):
+        elif ('exit_lot' not in context.action_config['missions'] or
+                context.action_config['missions']['exit_lot'] is None):
             raise KeyError(
                 f'CartDelivery MirAction requires the configured MiR mission '
                 f'name for [exit_lot], but it is not provided in the action '
                 f'config! Unable to instantiate an ActionFactory.')
 
+        # Import CartDetection module
+        detection_module = context.action_config['cart_detection_module']
+        detection_plugin = importlib.import_module(detection_module)
+        self.cart_detection = detection_plugin.CartDetection(self.context)
+
+        # Verify that this ActionFactory supports all the actions specified in
+        # the action config
+        for action in self.actions:
+            if not self.supports_action(action):
+                raise ValueError(
+                    f'The plugin config provided [{action}] as a performable '
+                    f'action, but it is not a supported action in the '
+                    f'rmf_cart_delivery ActionFactory!'
+                )
+
+    def supports_action(self, category: str) -> bool:
+        match category:
+            case 'delivery_pickup':
+                return True
+            case 'delivery_dropoff':
+                return True
+            case _:
+                return False
+
     def perform_action(
         self,
         category: str,
         description: dict,
-        context: ActionContext,
+        execution
     ) -> MirAction:
-        # Import CartDetection module
-        # TODO(@xiyuoh) Import this only once during ActionFactory instantiation
-        detection_module = context.action_config['cart_detection_module']
-        detection_plugin = importlib.import_module(detection_module)
-        cart_detection = detection_plugin.CartDetection(context)
-
         match category:
             case 'delivery_pickup':
-                return CartPickup(description, context, cart_detection)
+                return CartPickup(
+                    description, execution, self.context, self.cart_detection)
             case 'delivery_dropoff':
-                return CartDropoff(description, context, cart_detection)
+                return CartDropoff(
+                    description, execution, self.context, self.cart_detection)
 
 
 class CartPickup(MirAction):
     def __init__(
         self,
         description: dict,
+        execution,
         context: ActionContext,
         cart_detection
     ):
@@ -133,18 +150,19 @@ class CartPickup(MirAction):
 
         # Mission names to be used during pickup
         self.dock_to_cart_mission = \
-            self.context.action_config['missions']['dock_to_cart']
+            context.action_config['missions']['dock_to_cart']
         self.pickup_mission = \
-            self.context.action_config['missions']['pickup']
+            context.action_config['missions']['pickup']
         self.exit_mission = \
-            self.context.action_config['missions']['exit_lot']
+            context.action_config['missions']['exit_lot']
 
+        self.execution = execution
         self.cart_detection = cart_detection
         self.search_timeout = \
-            self.context.action_config.get('search_timeout', 60)  # seconds
+            context.action_config.get('search_timeout', 60)  # seconds
         self.cart_marker_type_guid = \
-            self.context.api.docking_offsets_guid_get(
-                self.context.action_config['marker_types']['cart'])
+            context.api.docking_offsets_guid_get(
+                context.action_config['marker_types']['cart'])
 
         # Check if the robot's latch is currently open
         if self.cart_detection.is_latch_open():
@@ -152,7 +170,9 @@ class CartPickup(MirAction):
             self.context.node.get_logger().info(
                 f'Robot [{self.context.name}] latch is open, unable to '
                 f'perform pickup, cancelling task...')
-            self.cancel_task()
+            self.cancel_task(
+                label='Robot latch is still open, unable to perform pickup.'
+            )
             return
 
         # Begin action
@@ -161,21 +181,21 @@ class CartPickup(MirAction):
         self.pickup = Pickup(
             state=PickupState.AT_PICKUP,
             pickup_lots=[description.get('pickup_lot')],
-            cart_id=description.get('cart_id', None),
+            cart_id=description.get('cart_id'),
             mission=None,
             latching=False
         )
 
     def update_action(self):
         if self.update_pickup(self.pickup):
-            if self.context.execution is not None:
-                self.context.execution.finished()
+            if self.execution is not None:
+                self.execution.finished()
             return True
         return False
 
     def update_pickup(self, pickup: Pickup):
         # Check that the action is underway and valid
-        if self.context.execution is not None and not self.context.execution.okay():
+        if self.execution is not None and not self.execution.okay():
             self.context.node.get_logger().info(
                 f'[delivery_pickup] action is killed/canceled.')
             pickup.state = PickupState.TASK_CANCELLED
@@ -192,7 +212,10 @@ class CartPickup(MirAction):
                     self.context.node.get_logger().info(
                         f'No shelf position [{mir_pos}] found on robot '
                         f'[{self.context.name}], cancelling task')
-                    self.cancel_task()
+                    self.cancel_task(
+                        label=f'MiR position is not found on the robot, ' + \
+                        f'unable to pickup.'
+                    )
                     pickup.state = PickupState.TASK_CANCELLED
                     return
                 cart_marker_guid = mir_pos['guid']
@@ -287,7 +310,9 @@ class CartPickup(MirAction):
                         f'Robot [{self.context.name}] was unable to dock under any '
                         f'carts, please check that cart is present. '
                         f'Cancelling task.')
-                    self.cancel_task()
+                    self.cancel_task(
+                        label=f'Dock to cart failed, unable to perform pickup.'
+                    )
                     pickup.state = PickupState.TASK_CANCELLED
                 else:
                     # If cart is wrong, cancel this task also but after we
@@ -297,7 +322,9 @@ class CartPickup(MirAction):
                         f'lot and cancelling task.')
                     if not self.exit_lot():
                         return
-                    self.cancel_task()
+                    self.cancel_task(
+                        label=f'Wrong cart found, unable to perform pickup.'
+                    )
                     pickup.state = PickupState.TASK_CANCELLED
 
             case PickupState.PICKUP_REQUESTED:
@@ -365,27 +392,30 @@ class CartDropoff(MirAction):
     def __init__(
         self,
         description: dict,
+        execution,
         context: ActionContext,
         cart_detection
     ):
         MirAction.__init__(self, context)
 
-        self.skip_action = False
+        self.execution = execution
         self.cart_detection = cart_detection
         self.dropoff_mission = \
-            self.context.action_config['missions']['dropoff']
+            context.action_config['missions']['dropoff']
         self.exit_mission = \
-            self.context.action_config['missions']['exit_lot']
+            context.action_config['missions']['exit_lot']
 
         # Check if robot is currently latching onto a cart. If the latch is
         # released before triggering a dropoff mission, there is no need to
-        # perform a full dropoff. The action should end after ensuring that the
-        # robot is no longer under a cart.
+        # perform a full dropoff. We can skip queueing the dropoff mission in
+        # the update loop and end action after ensuring that the robot is no
+        # longer under a cart.
+        self.skip_dropoff = False
         if not self.cart_detection.is_latch_open():
             self.context.node.get_logger().info(
                 f'Robot [{self.context.name}] latch is not open, dropoff '
                 f'mission will not be queued')
-            self.skip_action = True
+            self.skip_dropoff = True
 
         # Begin action
         self.context.node.get_logger().info(
@@ -394,8 +424,8 @@ class CartDropoff(MirAction):
 
     def update_action(self):
         if self.update_dropoff(self.dropoff):
-            if self.context.execution is not None:
-                self.context.execution.finished()
+            if self.execution is not None:
+                self.execution.finished()
             return True
         return False
 
@@ -403,16 +433,16 @@ class CartDropoff(MirAction):
         # Check that the action is underway and valid. No action if action has
         # been killed or cancelled, as we want to ensure that the robot is free
         # of carts.
-        if self.context.execution is not None and not self.context.execution.okay():
+        if self.execution is not None and not self.execution.okay():
             self.context.node.get_logger().info(
                 f'[delivery_dropoff] action is killed/canceled! Proceeding to '
                 f'queue cart dropoff mission to ensure that robot has fully '
                 f'released any attached cart and is safe to perform subsequent '
                 f'tasks.')
 
-        # If latch is already open, check if the robot is under a cart and queue
-        # exit lot mission accordingly
-        if self.skip_action:
+        # If skip_dropoff flag is raised, check if the robot is under a cart and
+        # queue exit lot mission accordingly
+        if self.skip_dropoff:
             if self.cart_detection.is_under_cart():
                 self.context.node.get_logger().info(
                     f'Robot [{self.context.name}] is detected to be under a '
@@ -421,8 +451,7 @@ class CartDropoff(MirAction):
                 if not self.context.api.queue_mission_by_name(self.exit_mission):
                     self.context.node.get_logger().info(
                         f'Unable to queue exit lot mission for robot '
-                        f'[{self.context.name}], retrying in the next '
-                        f'action loop'
+                        f'[{self.context.name}], retrying on the next update'
                     )
                     return
             return True
@@ -434,7 +463,7 @@ class CartDropoff(MirAction):
             if not mission_queue_id:
                 self.context.node.get_logger().error(
                     f'Unable to queue mission [{self.dropoff_mission}], '
-                    f'retrying on next action update'
+                    f'retrying on next update'
                 )
                 return
             now = self.context.node.get_clock().now().nanoseconds / 1e9

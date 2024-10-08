@@ -97,7 +97,6 @@ rmf_fleet:
 plugins:
   rmf_cart_delivery:
     module: "fleet_adapter_mir_actions.rmf_cart_delivery"
-    class: "CartDelivery"
     actions: ["rmf_cart_delivery", "delivery_pickup", "delivery_dropoff"]
     cart_detection_module: "fleet_adapter_mir_actions.rmf_cart_detection"
     missions:

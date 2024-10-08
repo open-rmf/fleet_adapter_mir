@@ -75,13 +75,13 @@ class ActionContext:
                  mir_api: MirAPI,
                  update_handle,  # rmf_fleet_adapter.RobotUpdateHandle
                  fleet_config: rmf_easy.FleetConfiguration,
-                 execution):
+                 action_config: dict):
         self.node = node
         self.name = name
         self.api = mir_api
         self.update_handle = update_handle
         self.fleet_config = fleet_config
-        self.execution = execution
+        self.action_config = action_config
 
 
 class RobotAdapterMiR:
@@ -164,7 +164,11 @@ class RobotAdapterMiR:
             try:
                 module = action_config['module']
                 plugin = importlib.import_module(module)
-                action_factory = plugin.ActionFactory(action_config)
+                action_context = ActionContext(
+                    self.node, self.name, self.api, self.update_handle,
+                    self.fleet_config, action_config
+                )
+                action_factory = plugin.ActionFactory(action_context)
                 self.action_factories[plugin_name] = action_factory
             except KeyError:
                 self.node.get_logger().info(
@@ -786,12 +790,8 @@ class RobotAdapterMiR:
 
         for _, action_factory in self.action_factories.items():
             if category in action_factory.actions:
-                action_context = ActionContext(
-                    self.node, self.name, self.api, self.update_handle,
-                    self.fleet_config, execution
-                )
                 action_obj = action_factory.perform_action(
-                    category, description, action_context
+                    category, description, execution
                 )
                 self.current_action = action_obj
                 return

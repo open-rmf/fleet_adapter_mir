@@ -15,38 +15,12 @@
 import json
 from abc import ABC, abstractmethod
 from typing import Callable
-import rclpy
-import rclpy.node as Node
-import rmf_adapter.easy_full_control as rmf_easy
 from fleet_adapter_mir.robot_adapter_mir import ActionContext
-from fleet_adapter_mir.mir_api import MirAPI
 
 
 class MirAction(ABC):
     def __init__(self, context: ActionContext):
         self.context = context
-
-        missions_json = context.action_config.get('missions_json')
-        if missions_json:
-            with open(missions_json, 'r') as g:
-                action_missions = json.load(g)
-
-            # Check if these missions are already created on the robot
-            missions_created = True
-            for mission_name in action_missions.keys():
-                if mission_name not in context.api.known_missions:
-                    missions_created = False
-                    break
-            if missions_created:
-                return
-
-            # Create these missions on the robot
-            context.api.create_missions(action_missions)
-            # Update mission actions stored in MirAPI
-            for mission, mission_data in context.api.known_missions.items():
-                context.api.mission_actions[mission] = \
-                    context.api.missions_mission_id_actions_get(
-                        mission_data['guid'])
 
     '''
     This method is called on every update by the robot adapter to monitor the
@@ -58,6 +32,9 @@ class MirAction(ABC):
         # To be populated in the plugins
         ...
 
+    '''
+    This method may be used to cancel the current ongoing task.
+    '''
     def cancel_current_task(self,
                             cancel_success: Callable[[], None],
                             cancel_fail: Callable[[], None],
@@ -81,13 +58,27 @@ class MirAction(ABC):
 
 
 class MirActionFactory(ABC):
-    def __init__(self, action_config: dict):
-        if 'actions' not in action_config:
+    def __init__(self, context: ActionContext):
+        self.context = context
+
+        if 'actions' not in context.action_config:
             raise KeyError(
                 f'List of supported actions is not provided in the action '
                 f'config! Unable to instantiate an ActionFactory.')
-        self.action_config = action_config
-        self.actions = action_config['actions']
+        self.actions = context.action_config['actions']
+
+        # Create required MiR missions on the robot
+        missions_json = context.action_config.get('missions_json')
+        self.create_missions(missions_json)
+
+    '''
+    This method can be used to verify whether this MirActionFactory supports the
+    configured action.
+    '''
+    @abstractmethod
+    def supports_action(self, category: str) -> bool:
+        # To be populated in the plugins
+        ...
 
     '''
     This method creates a MirAction object for the robot adapter to begin and
@@ -98,7 +89,35 @@ class MirActionFactory(ABC):
         self,
         category: str,
         description: dict,
-        context: ActionContext,
+        execution,
     ) -> MirAction:
         # To be populated in the plugins
         ...
+
+    '''
+    This method may be used to create any MiR missions required for this
+    MirAction on the robot from a JSON file.
+    '''
+    def create_missions(self, missions_json):
+        if missions_json is None:
+            return
+
+        with open(missions_json, 'r') as g:
+            action_missions = json.load(g)
+
+        # Check if these missions are already created on the robot
+        missions_created = True
+        for mission_name in action_missions.keys():
+            if mission_name not in self.context.api.known_missions:
+                missions_created = False
+                break
+        if missions_created:
+            return
+
+        # Create these missions on the robot
+        self.context.api.create_missions(action_missions)
+        # Update mission actions stored in MirAPI
+        for mission, mission_data in self.context.api.known_missions.items():
+            self.context.api.mission_actions[mission] = \
+                self.context.api.missions_mission_id_actions_get(
+                    mission_data['guid'])
