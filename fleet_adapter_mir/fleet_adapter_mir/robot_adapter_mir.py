@@ -782,11 +782,13 @@ class RobotAdapterMiR:
     def perform_action(self, category, description, execution):
         if self.current_action:
             # Should not reach here, but we log an error anyway
-            self.node.get_logger().info(
-                f'Robot [{self.name}] is busy with another perform action! '
-                f'Ignoring new action [{category}]')
-            execution.finished()
-            return
+            self.node.get_logger().error(
+                f'Robot [{self.name}] received a new action while it is busy '
+                f'with another perform action! Ending current action and '
+                f'accepting incoming action [{category}]')
+            if self.current_action.context.execution is not None:
+                self.current_action.context.execution.finished()
+            self.current_action = None
 
         for _, action_factory in self.action_factories.items():
             if category in action_factory.actions:
