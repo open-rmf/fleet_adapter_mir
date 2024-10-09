@@ -251,11 +251,14 @@ class RobotAdapterMiR:
             # PerformAction related checks
             if self.current_action:
                 if self.current_action.update_action():
-                    # This means that the action has ended, we can clear the
-                    # current action object
+                    # This means that the action has ended, we can mark the
+                    # ActionExecution as finished and clear the current action
+                    # object
                     self.node.get_logger().info(
                         f'Robot [{self.name}] has completed its current '
-                        f'action.')
+                        f'action, marking execution as finished.')
+                    if self.current_action.execution is not None:
+                        self.current_action.execution.finished()
                     self.current_action = None
 
             # Clear error on updates

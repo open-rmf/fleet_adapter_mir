@@ -19,8 +19,9 @@ from fleet_adapter_mir.robot_adapter_mir import ActionContext
 
 
 class MirAction(ABC):
-    def __init__(self, context: ActionContext):
+    def __init__(self, context: ActionContext, execution):
         self.context = context
+        self.execution = execution
 
     '''
     This method is called on every update by the robot adapter to monitor the

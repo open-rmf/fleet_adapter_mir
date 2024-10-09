@@ -146,7 +146,7 @@ class CartPickup(MirAction):
         context: ActionContext,
         cart_detection
     ):
-        MirAction.__init__(self, context)
+        MirAction.__init__(self, context, execution)
 
         # Mission names to be used during pickup
         self.dock_to_cart_mission = \
@@ -156,7 +156,6 @@ class CartPickup(MirAction):
         self.exit_mission = \
             context.action_config['missions']['exit_lot']
 
-        self.execution = execution
         self.cart_detection = cart_detection
         self.search_timeout = \
             context.action_config.get('search_timeout', 60)  # seconds
@@ -187,17 +186,15 @@ class CartPickup(MirAction):
         )
 
     def update_action(self):
-        if self.update_pickup(self.pickup):
-            if self.execution is not None:
-                self.execution.finished()
-            return True
-        return False
+        return self.update_pickup(self.pickup)
 
     def update_pickup(self, pickup: Pickup):
-        # Check that the action is underway and valid
+        # If the action is no longer active, perform cleanup by updating
+        # PickupState to TASK_CANCELLED.
         if self.execution is not None and not self.execution.okay():
             self.context.node.get_logger().info(
-                f'[delivery_pickup] action is killed/canceled.')
+                f'[delivery_pickup] action is no longer underway and valid, '
+                f'setting PickupState to TASK_CANCELLED.')
             pickup.state = PickupState.TASK_CANCELLED
 
         # Start state machine check
@@ -406,9 +403,8 @@ class CartDropoff(MirAction):
         context: ActionContext,
         cart_detection
     ):
-        MirAction.__init__(self, context)
+        MirAction.__init__(self, context, execution)
 
-        self.execution = execution
         self.cart_detection = cart_detection
         self.dropoff_mission = \
             context.action_config['missions']['dropoff']
@@ -433,22 +429,13 @@ class CartDropoff(MirAction):
         self.dropoff = Dropoff(mission=None)
 
     def update_action(self):
-        if self.update_dropoff(self.dropoff):
-            if self.execution is not None:
-                self.execution.finished()
-            return True
-        return False
+        return self.update_dropoff(self.dropoff)
 
     def update_dropoff(self, dropoff: Dropoff):
-        # Check that the action is underway and valid. No action if action has
-        # been killed or cancelled, as we want to ensure that the robot is free
-        # of carts.
+        # If action is no longer active, log for awareness. No cleanup required
         if self.execution is not None and not self.execution.okay():
             self.context.node.get_logger().info(
-                f'[delivery_dropoff] action is killed/canceled! Proceeding to '
-                f'queue cart dropoff mission to ensure that robot has fully '
-                f'released any attached cart and is safe to perform '
-                f'subsequent tasks.')
+                f'[delivery_dropoff] action is no longer underway and valid!')
 
         # If skip_dropoff flag is raised, check if the robot is under a cart
         # and queue exit lot mission accordingly
