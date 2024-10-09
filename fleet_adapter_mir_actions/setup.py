@@ -1,6 +1,6 @@
 from setuptools import setup
 
-package_name = 'fleet_adapter_mir'
+package_name = 'fleet_adapter_mir_actions'
 
 setup(
     name=package_name,
@@ -13,15 +13,12 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Grey, Aaron',
-    maintainer_email='grey@openrobotics.org, aaron@openrobotics.org',
-    description='RMF fleet adapter for MiR robots',
+    maintainer='Xiyu',
+    maintainer_email='xiyu@openrobotics.org',
+    description='RMF fleet adapter actions for MiR robots',
     license='Apache License 2.0',
     entry_points={
         'console_scripts': [
-            'fleet_adapter_mir=fleet_adapter_mir.fleet_adapter_mir:main',
-            'rmf_cart_delivery=fleet_adapter_mir.rmf_cart_delivery:CartDelivery',
-            'rmf_cart_detection=fleet_adapter_mir.rmf_cart_detection:CartDetection',
         ],
     },
 )
