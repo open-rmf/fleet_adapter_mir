@@ -827,6 +827,7 @@ class RobotAdapterMiR:
             for plugin, factory in self.action_factories.items():
                 if factory.supports_action(category):
                     self.action_to_plugin_name[category] = plugin
+                    factory.actions.append(category)
                     action_factory = factory
                     break
 
