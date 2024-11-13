@@ -22,6 +22,7 @@ class MirAction(ABC):
     def __init__(self, context: ActionContext, execution):
         self.context = context
         self.execution = execution
+        self.action_task_id = self.context.update_handle.more().current_task_id()
 
     '''
     This method is called on every update by the robot adapter to monitor the
@@ -36,28 +37,28 @@ class MirAction(ABC):
     '''
     This method may be used to cancel the current ongoing task.
     '''
-    def cancel_current_task(self,
-                            cancel_success: Callable[[], None],
-                            cancel_fail: Callable[[], None],
-                            label: str = ''):
-        current_task_id = self.context.update_handle.more().current_task_id()
+    def cancel_task_of_action(
+            self,
+            cancel_success: Callable[[], None],
+            cancel_fail: Callable[[], None],
+            label: str = ''):
         self.context.node.get_logger().info(
             f'[{self.context.name}] Cancel task requested for '
-            f'[{current_task_id}]')
+            f'[{self.action_task_id}]')
 
         def _on_cancel(result: bool):
             if result:
                 self.context.node.get_logger().info(
-                    f'[{self.context.name}] Found task [{current_task_id}], '
+                    f'[{self.context.name}] Found task [{self.action_task_id}], '
                     f'cancelling...')
                 cancel_success()
             else:
                 self.context.node.get_logger().info(
                     f'[{self.context.name}] Failed to cancel task '
-                    f'[{current_task_id}]')
+                    f'[{self.action_task_id}]')
                 cancel_fail()
         self.context.update_handle.more().cancel_task(
-            current_task_id, [label], lambda result: _on_cancel(result))
+            self.action_task_id, [label], lambda result: _on_cancel(result))
 
 
 class MirActionFactory(ABC):

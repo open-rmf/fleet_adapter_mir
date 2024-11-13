@@ -392,7 +392,7 @@ class CartPickup(MirAction):
 
         def _cancel_fail():
             pass
-        self.cancel_current_task(_cancel_success, _cancel_fail, label)
+        self.cancel_task_of_action(_cancel_success, _cancel_fail, label)
 
 
 class CartDropoff(MirAction):
