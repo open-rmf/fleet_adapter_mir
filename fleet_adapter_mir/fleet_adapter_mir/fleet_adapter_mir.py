@@ -29,6 +29,7 @@ from rclpy.duration import Duration
 
 import rmf_adapter
 import rmf_adapter.easy_full_control as rmf_easy
+import rmf_adapter.fleet_update_handle as rmf_fleet
 from rmf_adapter import Transformation
 from .robot_adapter_mir import RobotAdapterMiR
 
@@ -174,6 +175,23 @@ def create_fleet(
     update_frequency = config_yaml['rmf_fleet']['robot_state_update_frequency']
     debug = config_yaml['rmf_fleet']['debug']
     plugin_config = config_yaml.get('plugins')
+    # Add all plugin actions to the fleet
+    def _consider(description, confirm: rmf_fleet.Confirmation):
+        confirm.accept()
+    for plugin_name, plugin_data in plugin_config.items():
+        plugin_actions = plugin_data.get('actions')
+        if not plugin_actions:
+            cmd_node.get_logger().warn(
+                f'No action provided for plugin [{plugin_name}]! Fleet '
+                f'[{fleet_handle.fleet_name}] will not bid on tasks submitted '
+                f'with actions associated with this plugin unless the action '
+                f'is registered as a performable action for this fleet by '
+                f'the user.'
+            )
+            continue
+        for action in plugin_actions:
+            fleet_handle.add_performable_action(action, _consider)
+
 
     event_loop = asyncio.new_event_loop()
 
