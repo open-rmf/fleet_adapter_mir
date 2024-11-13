@@ -69,6 +69,12 @@ class MirActionFactory(ABC):
             raise KeyError(
                 f'List of supported actions is not provided in the action '
                 f'config! Unable to instantiate an ActionFactory.')
+        elif not context.action_config['actions']:
+            raise Exception(
+                f'An empty list was provided to the action config! Please '
+                f'fill in the list with support actions for this plugin.'
+                f'Unable to instantiate an ActionFactory.'
+            )
         self.actions = context.action_config['actions']
 
         # Create required MiR missions on the robot

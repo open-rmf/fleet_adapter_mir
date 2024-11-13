@@ -159,7 +159,8 @@ class RobotAdapterMiR:
         self.current_action = None
 
         # Import and store plugin actions and action factories
-        self.action_factories = {}
+        self.action_to_plugin_name = {}  # Maps action name to plugin name
+        self.action_factories = {}  # Maps plugin name to action factory
         for plugin_name, action_config in plugin_config.items():
             try:
                 module = action_config['module']
@@ -169,6 +170,24 @@ class RobotAdapterMiR:
                     self.fleet_config, action_config
                 )
                 action_factory = plugin.ActionFactory(action_context)
+                for action in action_factory.actions:
+                    # Verify that this action is not duplicated across plugins
+                    target_plugin = self.action_to_plugin_name.get(action)
+                    if (target_plugin is not None and
+                            target_plugin != plugin_name):
+                        raise Exception(
+                            f'Action [{action}] is indicated to be supported '
+                            f'by multiple plugins: {target_plugin} and '
+                            f'{plugin_name}. The fleet adapter is unable to '
+                            f'select the intended plugin to be paired for '
+                            f'this action. Please ensure that action names '
+                            f'are not duplicated across supported plugins. '
+                            f'Unable to create ActionFactory for '
+                            f'{plugin_name}. Robot [{self.name}] will not be '
+                            f'able to perform actions associated with this '
+                            f'plugin.'
+                        )
+                    self.action_to_plugin_name[action] = plugin_name
                 self.action_factories[plugin_name] = action_factory
             except KeyError:
                 self.node.get_logger().info(
@@ -793,8 +812,11 @@ class RobotAdapterMiR:
                 self.current_action.context.execution.finished()
             self.current_action = None
 
-        for _, action_factory in self.action_factories.items():
-            if category in action_factory.actions:
+        plugin_name = self.action_to_plugin_name.get(category)
+        if plugin_name:
+            action_factory = self.action_factories.get(plugin_name)
+            if action_factory:
+                # Valid action-plugin pair exists, create MirAction object
                 action_obj = action_factory.perform_action(
                     category, description, execution
                 )
