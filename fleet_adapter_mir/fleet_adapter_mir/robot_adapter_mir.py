@@ -187,6 +187,13 @@ class RobotAdapterMiR:
                             f'able to perform actions associated with this '
                             f'plugin.'
                         )
+                    # Verify that this ActionFactory supports this action
+                    if not action_factory.supports_action(action):
+                        raise ValueError(
+                            f'The plugin config provided [{action}] as a '
+                            f'performable action, but it is not a supported '
+                            f'action in the {plugin_name} ActionFactory!'
+                        )
                     self.action_to_plugin_name[action] = plugin_name
                 self.action_factories[plugin_name] = action_factory
             except KeyError:

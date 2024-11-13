@@ -104,16 +104,6 @@ class ActionFactory(MirActionFactory):
         detection_plugin = importlib.import_module(detection_module)
         self.cart_detection = detection_plugin.CartDetection(self.context)
 
-        # Verify that this ActionFactory supports all the actions specified in
-        # the action config
-        for action in self.actions:
-            if not self.supports_action(action):
-                raise ValueError(
-                    f'The plugin config provided [{action}] as a performable '
-                    f'action, but it is not a supported action in the '
-                    f'rmf_cart_delivery ActionFactory!'
-                )
-
     def supports_action(self, category: str) -> bool:
         match category:
             case 'delivery_pickup':
