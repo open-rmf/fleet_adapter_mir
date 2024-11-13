@@ -1,24 +1,38 @@
+# Copyright 2024 Open Source Robotics Foundation, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import asyncio
 import sys
 import yaml
+import json
 import nudged
 import argparse
+import time
+import threading
 from pprint import pprint
 from functools import partial
 
 import rclpy
 import rclpy.node
-from rmf_fleet_msgs.msg import FleetState
-from rmf_task_msgs.msg import TaskProfile, TaskType
+from rclpy.duration import Duration
 
-import rmf_adapter as adpt
-import rmf_adapter.vehicletraits as traits
-import rmf_adapter.battery as battery
-import rmf_adapter.geometry as geometry
-import rmf_adapter.graph as graph
-import rmf_adapter.plan as plan
+import rmf_adapter
+import rmf_adapter.easy_full_control as rmf_easy
+import rmf_adapter.fleet_update_handle as rmf_fleet
+from rmf_adapter import Transformation
+from .robot_adapter_mir import RobotAdapterMiR
 
-from .MiRCommandHandle import MiRCommandHandle
-from .MiRClientAPI import MirAPI
 
 ###############################################################################
 # HELPER FUNCTIONS AND CLASSES
@@ -55,229 +69,155 @@ def sanitise_dict(dictionary, inplace=False, recursive=False):
     return output
 
 
-def compute_transforms(rmf_coordinates, mir_coordinates, node=None):
+def compute_transforms(level, coords, node=None):
     """Get transforms between RMF and MIR coordinates."""
-    transforms = {
-        'rmf_to_mir': nudged.estimate(rmf_coordinates, mir_coordinates),
-        'mir_to_rmf': nudged.estimate(mir_coordinates, rmf_coordinates)
-    }
+    rotation = None
+    scale = None
+    translation = None
+    if 'rmf' in coords:
+        rmf_coords = coords['rmf']
+        mir_coords = coords['mir']
+        tf = nudged.estimate(rmf_coords, mir_coords)
+        if node:
+            mse = nudged.estimate_error(tf, rmf_coords, mir_coords)
+            node.get_logger().info(
+                f"Transformation error estimate for {level}: {mse}"
+            )
+        rotation = tf.get_rotation()
+        scale = tf.get_scale()
+        translation = tf.get_translation()
+    elif 'rotation' in coords:
+        rotation = coords['rotation']
+        scale = coords['scale']
+        translation = coords['translation']
+    else:
+        return None
 
-    if node:
-        mse = nudged.estimate_error(transforms['rmf_to_mir'],
-                                    rmf_coordinates,
-                                    mir_coordinates)
-
-        node.get_logger().info(f"Transformation estimate error: {mse}")
-    return transforms
-
-
-def create_fleet(config,nav_graph_path, mock):
-    """Create RMF Adapter, FleetUpdateHandle, and parse navgraph."""
-    profile = traits.Profile(
-        geometry.make_final_convex_circle(config['rmf_fleet']['profile']['footprint']),
-        geometry.make_final_convex_circle(config['rmf_fleet']['profile']['vicinity'])
+    return Transformation(
+        rotation,
+        scale,
+        translation
     )
-    robot_traits = traits.VehicleTraits(
-        linear=traits.Limits(*config['rmf_fleet']['limits']['linear']),
-        angular=traits.Limits(*config['rmf_fleet']['limits']['angular']),
-        profile=profile
-    )
-    robot_traits.differential.reversible = config['rmf_fleet']['reversible']
 
-    voltage = config['rmf_fleet']['battery_system']['voltage']
-    capacity = config['rmf_fleet']['battery_system']['capacity']
-    charging_current = config['rmf_fleet']['battery_system']['charging_current']
-    battery_sys = battery.BatterySystem.make(voltage,capacity,charging_current)
 
-    mass = config['rmf_fleet']['mechanical_system']['mass']
-    moment = config['rmf_fleet']['mechanical_system']['moment_of_inertia']
-    friction = config['rmf_fleet']['mechanical_system']['friction_coefficient']
-    mech_sys = battery.MechanicalSystem.make(mass,moment,friction)
+class FleetAdapterMiR:
+    def __init__(
+        self,
+        cmd_node,
+        adapter,
+        fleet_handle,
+        robot_handles: list[RobotAdapterMiR],
+        frequency,
+        event_loop,
+    ):
+        self.event_loop = event_loop
+        self.adapter = adapter
+        self.fleet_handle = fleet_handle
+        self.robot_handles: list[RobotAdapterMiR] = robot_handles
+        self.node = cmd_node
+        if frequency > 0.0:
+            self.period = 1.0/frequency
+        else:
+            raise Exception(f'Invalid robot update frequency: {frequency}')
+        self.robot_update_jobs = {}
 
-    ambient_power_sys = battery.PowerSystem.make(
-        config['rmf_fleet']['ambient_system']['power'])
-    tool_power_sys = battery.PowerSystem.make(
-        config['rmf_fleet']['cleaning_system']['power'])
-    motion_sink = battery.SimpleMotionPowerSink(battery_sys,mech_sys)
-    ambient_sink = battery.SimpleDevicePowerSink(battery_sys, ambient_power_sys)
-    tool_sink = battery.SimpleDevicePowerSink(battery_sys, tool_power_sys)
+    async def state_updates(self):
+        robot_updaters = []
+        for robot in self.robot_handles:
+            robot_updaters.append(robot.update_loop(self.period))
+        await asyncio.gather(*robot_updaters)
 
-    nav_graph = graph.parse_graph(nav_graph_path, robot_traits)
+    def update_loop(self):
+        asyncio.set_event_loop(self.event_loop)
+        self.event_loop.run_until_complete(self.state_updates())
+
+    def start(self):
+        update_thread = threading.Thread(target=self.update_loop)
+        update_thread.start()
+
+        # Create the executor for the logger node
+        rclpy_executor = rclpy.executors.SingleThreadedExecutor()
+        rclpy_executor.add_node(self.node)
+
+        self.adapter.start()
+        rclpy_executor.spin()
+
+        self.node.destroy_node()
+        rclpy_executor.shutdown()
+        rclpy.shutdown()
+
+
+def create_fleet(
+        fleet_config, config_yaml, cmd_node, rmf_missions) -> FleetAdapterMiR:
+    """Create RMF Adapter and fleet handle"""
+    for level, coords in \
+            config_yaml['conversions']['reference_coordinates'].items():
+        tf = compute_transforms(level, coords, cmd_node)
+        fleet_config.add_robot_coordinates_transformation(level, tf)
 
     # RMF_CORE Fleet Adapter: Manages delivery or loop requests
-    if mock:
-        adapter = adpt.MockAdapter(config['node_names']['rmf_fleet_adapter'])
-    else:
-        adapter = adpt.Adapter.make(config['node_names']['rmf_fleet_adapter'])
-
+    adapter = rmf_adapter.Adapter.make(
+        config_yaml['node_names']['rmf_fleet_adapter'])
     assert adapter, ("Adapter could not be init! "
                      "Ensure a ROS2 scheduler node is running")
 
-    fleet_name = config['rmf_fleet']['name']
-    fleet = adapter.add_fleet(fleet_name, robot_traits, nav_graph)
+    cmd_node.declare_parameter('server_uri', '')
+    server_uri = cmd_node.get_parameter(
+        'server_uri'
+    ).get_parameter_value().string_value
+    if server_uri == '':
+        server_uri = None
 
-    if config['rmf_fleet']['publish_fleet_state']:
-        fleet.fleet_state_publish_period(None)
+    fleet_config.server_uri = server_uri
+    fleet_handle = adapter.add_easy_fleet(fleet_config)
 
-    drain_battery = config['rmf_fleet']['account_for_battery_drain']
-    recharge_threshold = config['rmf_fleet']['recharge_threshold']
-    recharge_soc = config['rmf_fleet']['recharge_soc']
-    finishing_request = config['rmf_fleet']['task_capabilities']['finishing_request']
-    # Set task planner params
-    ok = fleet.set_task_planner_params(
-        battery_sys,
-        motion_sink,
-        ambient_sink,
-        tool_sink,
-        recharge_threshold,
-        recharge_soc,
-        drain_battery,
-        finishing_request)
-    assert ok, ("Unable to set task planner params")
-
-    task_capabilities_config = config['rmf_fleet']['task_capabilities']
-    finishing_request = task_capabilities_config['finishing_request']
-    # Set task planner params
-    ok = fleet.set_task_planner_params(
-        battery_sys,
-        motion_sink,
-        ambient_sink,
-        tool_sink,
-        recharge_threshold,
-        recharge_soc,
-        drain_battery,
-        finishing_request)
-    assert ok, ("Unable to set task planner params")
-
-    # Accept Standard RMF Task which are defined in config.yaml
-    always_accept = adpt.fleet_update_handle.Confirmation()
-    always_accept.accept()
-    if task_capabilities_config['loop']:
-        print(f"Fleet [{fleet_name}] is configured to perform Loop tasks")
-        fleet.consider_patrol_requests(lambda desc: always_accept)
-    if task_capabilities_config['delivery']:
-        print(f"Fleet [{fleet_name}] is configured to perform Delivery tasks")
-        fleet.consider_delivery_requests(lambda desc: always_accept, lambda desc: always_accept)
-
-    # Whether to accept custom RMF action tasks
-    def _consider(description: dict):
-        confirm = adpt.fleet_update_handle.Confirmation()
+    conversions = config_yaml['conversions']
+    update_frequency = config_yaml['rmf_fleet']['robot_state_update_frequency']
+    debug = config_yaml['rmf_fleet']['debug']
+    plugin_config = config_yaml.get('plugins')
+    # Add all plugin actions to the fleet
+    def _consider(description, confirm: rmf_fleet.Confirmation):
         confirm.accept()
-        return confirm
-
-    # TODO(AA): To check if the MiR fleet supports these missions names, before
-    # confirming.
-    # Configure this fleet to perform action category
-    if 'action_categories' in task_capabilities_config:
-        for cat in task_capabilities_config['action_categories']:
-            print(f"Fleet [{fleet_name}] is configured to perform action of category [{cat}]")
-            fleet.add_performable_action(cat, _consider)
-
-    return adapter, fleet, fleet_name, robot_traits, nav_graph
-
-def create_robot_command_handles(config, handle_data, dry_run=False):
-    robots = {}
-
-    for robot_name, robot_config in config['robots'].items():
-        # CONFIGURE MIR =======================================================
-        mir_config = robot_config['mir_config']
-        rmf_config = robot_config['rmf_config']
-
-        prefix = mir_config['base_url']
-        headers = {}
-        headers['Content-Type']  = mir_config['user']
-        headers['Authorization'] = mir_config['password']
-
-        # CONFIGURE HANDLE ====================================================
-        robot = MiRCommandHandle(
-                name=robot_name,
-                node=handle_data['node'],
-                rmf_graph=handle_data['graph'],
-                robot_traits=handle_data['robot_traits'],
-                robot_state_update_frequency=rmf_config.get('robot_state_update_frequency', 1),
-                dry_run=dry_run
-        )
-        robot.mir_api =  MirAPI(prefix,headers)
-        robot.transforms = handle_data['transforms']
-        robot.rmf_map_name = rmf_config['start']['map_name']
-
-        if not dry_run:
-        #    with MiRRetryContext(robot):
-            _mir_status = robot.mir_api.status_get()
-            robot.mir_name = _mir_status["robot_name"]
-
-            robot.load_mir_missions()
-            robot.load_mir_positions()
-
-            # Check that the MiR fleet has defined the RMF move mission,
-            # that this adapter will use repeatedly with varying parameters.
-            rmf_move_mission = mir_config['rmf_move_mission']
-            assert rmf_move_mission in robot.mir_missions, \
-                (f'RMF move mission [{rmf_move_mission}] not yet defined as a mission in MiR fleet')
-            robot.mir_rmf_move_mission = rmf_move_mission
-
-            if 'dock_and_charge_mission' in mir_config:
-                dock_and_charge_mission = mir_config['dock_and_charge_mission']
-                assert dock_and_charge_mission in robot.mir_missions, \
-                (f'Dock and charge mission [{dock_and_charge_mission}] not yet defined as a mission in MiR fleet')
-                robot.mir_dock_and_charge_mission = dock_and_charge_mission
-
-        else:
-            robot.mir_name = "DUMMY_ROBOT_FOR_DRY_RUN"
-
-        robots[robot.name] = robot
-
-        # OBTAIN PLAN STARTS ==================================================
-        start_config = rmf_config['start']
-
-        # If the plan start is configured, use it, otherwise, grab it
-        waypoint_index = start_config.get('waypoint_index')
-        orientation = start_config.get('orientation')
-        if (waypoint_index is not None) and (orientation is not None):
-            pprint(type(handle_data['adapter']))
-            starts = [plan.Start(handle_data['adapter'].now(),
-                                 start_config.get('waypoint_index'),
-                                 start_config.get('orientation'))]
-        else:
-            starts = plan.compute_plan_starts(
-                handle_data['graph'],
-                start_config['map_name'],
-                robot.get_position(rmf=True, as_dimensions=True),
-                handle_data['adapter'].now(),
-                max_merge_waypoint_distance = start_config["max_merge_waypoint_distance"],
-                max_merge_lane_distance = start_config["max_merge_lane_distance"]
+    for plugin_name, plugin_data in plugin_config.items():
+        plugin_actions = plugin_data.get('actions')
+        if not plugin_actions:
+            cmd_node.get_logger().warn(
+                f'No action provided for plugin [{plugin_name}]! Fleet '
+                f'[{fleet_handle.fleet_name}] will not bid on tasks submitted '
+                f'with actions associated with this plugin unless the action '
+                f'is registered as a performable action for this fleet by '
+                f'the user.'
             )
-        assert starts, ("Robot %s can't be placed on the nav graph!"
-                        % robot_name)
-        assert len(starts) != 0, (f'No StartSet found for robot: {robot_name}')
+            continue
+        for action in plugin_actions:
+            fleet_handle.add_performable_action(action, _consider)
 
-        # Insert start data into robot
-        start = starts[0]
 
-        if start.lane is not None:  # If the robot is in a lane
-            robot.rmf_current_lane_index = start.lane
-            robot.rmf_current_waypoint_index = None
-            robot.rmf_target_waypoint_index = None
-        else:  # Otherwise, the robot is on a waypoint
-            robot.rmf_current_lane_index = None
-            robot.rmf_current_waypoint_index = start.waypoint
-            robot.rmf_target_waypoint_index = None
+    event_loop = asyncio.new_event_loop()
 
-        print("MAP_NAME:", start_config['map_name'])
-        robot.rmf_map_name = start_config['map_name']
+    robots_handles = []
+    for robot_name, rmf_config in \
+            fleet_config.known_robot_configurations.items():
+        mir_config = \
+            config_yaml['rmf_fleet']['robots'][robot_name]['mir_config']
+        robots_handles.append(RobotAdapterMiR(
+            robot_name,
+            rmf_config,
+            mir_config,
+            conversions,
+            rmf_missions,
+            fleet_handle,
+            fleet_config,
+            plugin_config,
+            cmd_node,
+            event_loop,
+            debug,
+        ))
 
-        handle_data['fleet_handle'].add_robot(
-            robot,
-            robot.name,
-            handle_data['robot_traits'].profile,
-            starts,
-            lambda rmf_updater: robot.init_updater(rmf_updater))
+    return FleetAdapterMiR(
+        cmd_node, adapter, fleet_handle, robots_handles, update_frequency,
+        event_loop)
 
-        handle_data['node'].get_logger().info(
-            f"successfully initialized robot {robot.name}"
-            f" (MiR name: {robot.mir_name})"
-        )
-    return robots
 
 ###############################################################################
 # MAIN
@@ -286,7 +226,7 @@ def main(argv=sys.argv):
 
     # INIT RCL ================================================================
     rclpy.init(args=argv)
-    adpt.init_rclcpp()
+    rmf_adapter.init_rclcpp()
     args_without_ros = rclpy.utilities.remove_ros_args(argv)
 
     parser = argparse.ArgumentParser(
@@ -297,7 +237,10 @@ def main(argv=sys.argv):
     parser.add_argument("-c", "--config_file", type=str, required=True,
                         help="Input config.yaml file to process")
     parser.add_argument("-n", "--nav_graph", type=str, required=True,
-                    help="Path to the nav_graph for this fleet adapter")
+                        help="Path to the nav_graph for this fleet adapter")
+    parser.add_argument("-r", "--rmf_missions", type=str,
+                        required=False, default='',
+                        help="Path to the RMF missions to be created on robot")
     parser.add_argument("-m", "--mock", action='store_true',
                         help="Init a mock adapter instead "
                              "(does not require a schedule node, "
@@ -310,90 +253,47 @@ def main(argv=sys.argv):
 
     config_path = args.config_file
     nav_graph_path = args.nav_graph
-    mock = args.mock
+    missions_path = args.rmf_missions
+
+    fleet_config = rmf_easy.FleetConfiguration.from_config_files(
+        config_path, nav_graph_path
+    )
+    assert fleet_config, f'Failed to parse config file [{config_path}]'
+
+    with open(config_path, 'r') as f:
+        config_yaml = yaml.safe_load(f)
+
+    if missions_path == '':
+        rmf_missions = None
+    else:
+        with open(missions_path, 'r') as g:
+            rmf_missions = json.load(g)
+
     dry_run = args.dry_run  # For testing
 
     if dry_run:
-        mock = True
+        print('Dry run finished')
+        # We don't have a mock adapter for the Easy API, so for now we should
+        # just exit as long as the config was parsed without an error.
+        # TODO(@mxgrey): Think of a meaningful way to do "dry runs" with the
+        # Easy API.
+        exit()
 
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
+    sanitise_dict(config_yaml, inplace=True, recursive=True)
 
-    sanitise_dict(config, inplace=True, recursive=True)
-
-    print("\n== Initialising MiR Robot Command Handles with Config ==")
-    pprint(config)
+    print("\n== MiR Adapter Configuration ==")
+    pprint(config_yaml)
     print()
 
-    # INIT FLEET ==============================================================
-    adapter, fleet, fleet_name, robot_traits, nav_graph = create_fleet(
-        config,nav_graph_path, mock=mock)
+    # Create a node to use inside of the Python code for logging
+    cmd_node = rclpy.node.Node(
+        config_yaml['node_names']['robot_command_handle'])
 
-    # INIT TRANSFORMS =========================================================
-    rmf_coordinates = config['reference_coordinates']['rmf']
-    mir_coordinates = config['reference_coordinates']['mir']
-    transforms = compute_transforms(rmf_coordinates, mir_coordinates)
+    # Create the fleet, including the robots that are in the config file
+    fleet = create_fleet(fleet_config, config_yaml, cmd_node, rmf_missions)
 
-    # INIT ROBOT HANDLES ======================================================
-    cmd_node = rclpy.node.Node(config['node_names']['robot_command_handle'])
-
-    handle_data = {
-        'fleet_handle': fleet,
-        'fleet_name': fleet_name,
-        'adapter': adapter,
-        'node': cmd_node,
-
-        'graph': nav_graph,
-        'robot_traits': robot_traits,
-        'transforms': transforms
-    }
-
-    robots = create_robot_command_handles(config, handle_data, dry_run=dry_run)
-
-    # CREATE NODE EXECUTOR ====================================================
-    rclpy_executor = rclpy.executors.SingleThreadedExecutor()
-    rclpy_executor.add_node(cmd_node)
-
-    # INIT FLEET STATE PUB ====================================================
-    if config['rmf_fleet']['publish_fleet_state']:
-        fleet_state_node = rclpy.node.Node(
-            config['node_names']['fleet_state_publisher'])
-        fleet_state_pub = fleet_state_node.create_publisher(
-            FleetState,
-            config['rmf_fleet']['fleet_state_topic'],
-            1
-        )
-        rclpy_executor.add_node(fleet_state_node)
-
-        def create_fleet_state_pub_fn(fleet_state_pub, fleet_name, robots):
-            def f():
-                fleet_state = FleetState()
-                fleet_state.name = fleet_name
-
-                for robot in robots.values():
-                    fleet_state.robots.append(robot.robot_state)
-
-                fleet_state_pub.publish(fleet_state)
-            return f
-
-        fleet_state_timer = fleet_state_node.create_timer(
-            config['rmf_fleet']['fleet_state_publish_frequency'],
-            create_fleet_state_pub_fn(fleet_state_pub, fleet_name, robots)
-        )
-
-    # GO! =====================================================================
-    adapter.start()
-    rclpy_executor.spin()
-
-    # CLEANUP =================================================================
-    cmd_node.destroy_node()
-
-    if config['rmf_fleet']['publish_fleet_state']:
-        fleet_state_node.destroy_timer(fleet_state_timer)
-        fleet_state_node.destroy_node()
-
-    rclpy_executor.shutdown()
-    rclpy.shutdown()
+    # GO!
+    fleet.start()
 
 
 if __name__ == "__main__":

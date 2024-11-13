@@ -1,5 +1,5 @@
 # fleet_adapter_mir
-MiR100 and MirFM Fleet Adapter using the https://github.com/open-rmf/rmf_ros2/tree/main/rmf_fleet_adapter_python
+MiR100, 200 and 250 using the https://github.com/open-rmf/rmf_ros2/tree/main/rmf_fleet_adapter_python
 
 
 
@@ -30,7 +30,7 @@ colcon build
 
 ## Description
 
-These packages implement a MiR robot/MiR Fleet command handle that is managed by a fleet adapter in Python. (Along with some helpers.) It can be used to command and manage a fleet of MiR robots using RMF!
+These packages implement a MiR command handle that is managed by a fleet adapter in Python. (Along with some helpers.) It can be used to command and manage a fleet of MiR robots using RMF!
 
 It uses the `rmf_fleet_adapter_python` bindings, which allows for communication with `open-rmf` libraries and ROS2 nodes.
 
@@ -40,11 +40,13 @@ In effect, it interfaces the MiR REST API with `open-rmf`, all without needing t
 
 ### MiR vs. MiR Fleet
 
-Since the MiR robots and MiR Fleet work with different sets of endpoints that serve different functions, both `fleet_adapter_mir` and `fleet_adapter_mirfm` packages are availble to demonstrate RMF integration between MiR100 and MiR Fleet respectively. In addition, the `mir_fleet_client` package provides additional API needed for the MiR Fleet + RMF integration.
+Since the MiR robots and MiR Fleet work with different sets of endpoints that serve different functions, both `fleet_adapter_mir` and `fleet_adapter_mirfm` packages are availble to demonstrate RMF integration between MiR100/200/250 and MiR Fleet respectively. In addition, the `mir_fleet_client` package provides additional API needed for the MiR Fleet + RMF integration.
 
 For users who wish to take advantage of MiR Fleet's centralized control system/interface or do not have access to individual MiR robots, the `fleet_adapter_mirfm` package enables RMF integration with MiR Fleet by obtaining individual MiR robot positions and mission GUIDs via the MiR Fleet API and dispatching commands directly to the robots themselves. The current MiR Fleet API does not provide all the necessary endpoints for RMF to perform its task allocation and traffic deconfliction to the full extent, hence the implementation contains direct communication between RMF and MiR robots as well.
 
 As such, it is recommended to implement the fleet adapter directly with individual MiR robots using `fleet_adapter_mir`.
+
+**NOTE**: `fleet_adapter_mirfm` is currently not being actively supported.
 
 
 
@@ -83,7 +85,8 @@ We have to deal with the `rmf_traffic` navgraph and the MiR map, with their own 
 
 Luckily, we can leverage the `nudged` Python library to compute coordinate transforms between the two sets of coordinates. You just have to make sure to provide equivalent reference points within the two maps so transforms can be computed.
 
-The transform objects are stored in the robot command handle's `self.transforms` member.
+The transform objects are stored in the EasyFullControl fleet adapter handle.
+
 
 
 

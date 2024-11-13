@@ -1,0 +1,215 @@
+{
+  "rmf_dock_and_charge": [
+    {
+      "priority": 1,
+      "parameters": [
+        {
+          "value": "to be replaced with a value guid in the fleet adapter",
+          "input_name": "end_waypoint",
+          "id": "position"
+        },
+        {
+          "value": 10,
+          "input_name": null,
+          "id": "retries"
+        },
+        {
+          "value": 0.2,
+          "input_name": null,
+          "id": "distance_threshold"
+        }
+      ],
+      "action_type": "move"
+    },
+    {
+      "priority": 2,
+      "parameters": [
+        {
+          "value": null,
+          "input_name": "end_waypoint",
+          "id": "marker"
+        },
+        {
+          "value": "some_placeholder_marker_type_guid",
+          "input_name": "charger_marker_type",
+          "id": "marker_type"
+        },
+        {
+          "value": "10",
+          "input_name": null,
+          "id": "retries"
+        },
+        {
+          "value": 0.25,
+          "input_name": null,
+          "id": "max_linear_speed"
+        }
+      ],
+      "action_type": "docking"
+    },
+    {
+      "priority": 3,
+      "parameters": [
+        {
+          "value": null,
+          "input_name": null,
+          "id": "minimum_time"
+        },
+        {
+          "value": null,
+          "input_name": null,
+          "id": "minimum_percentage"
+        },
+        {
+          "value": true,
+          "input_name": null,
+          "id": "charge_until_new_mission"
+        }
+      ],
+      "action_type": "charging"
+    }
+  ],
+  "rmf_follow_line": [
+    {
+      "priority": 1,
+      "parameters": [],
+      "action_type": "adjust_localization"
+    },
+    {
+      "priority": 2,
+      "parameters": [
+        {
+          "value": "to be replaced with a value guid in the fleet adapter",
+          "input_name": "start_waypoint",
+          "id": "position"
+        },
+        {
+          "value": 10,
+          "input_name": null,
+          "id": "retries"
+        },
+        {
+          "value": 0.2,
+          "input_name": null,
+          "id": "distance_threshold"
+        }
+      ],
+      "action_type": "move"
+    },
+    {
+      "priority": 3,
+      "parameters": [
+        {
+          "value": "to be replaced with a value guid in the fleet adapter",
+          "input_name": "end_waypoint",
+          "id": "position"
+        },
+        {
+          "value": 10,
+          "input_name": null,
+          "id": "retries"
+        },
+        {
+          "value": 0.2,
+          "input_name": null,
+          "id": "distance_threshold"
+        }
+      ],
+      "action_type": "move"
+    },
+    {
+      "priority": 4,
+      "parameters": [],
+      "action_type": "adjust_localization"
+    }
+  ],
+  "rmf_localize": [
+    {
+      "priority": 1,
+      "parameters": [],
+      "action_type": "adjust_localization"
+    },
+    {
+      "priority": 2,
+      "parameters": [
+        {
+          "value": "to be replaced with a value guid in the fleet adapter",
+          "input_name": "position_estimate",
+          "id": "entry_position"
+        }
+      ],
+      "action_type": "switch_map"
+    },
+    {
+      "priority": 3,
+      "parameters": [],
+      "action_type": "adjust_localization"
+    },
+    {
+      "priority": 4,
+      "parameters": [],
+      "action_type": "adjust_localization"
+    },
+    {
+      "priority": 5,
+      "parameters": [],
+      "action_type": "adjust_localization"
+    }
+  ],
+  "rmf_move": [
+    {
+      "priority": 1,
+      "parameters": [
+        {
+          "value": 0.0,
+          "input_name": "X",
+          "id": "x"
+        },
+        {
+          "value": 0.0,
+          "input_name": "Y",
+          "id": "y"
+        },
+        {
+          "value": 0.0,
+          "input_name": "Orientation",
+          "id": "orientation"
+        },
+        {
+          "value": 10,
+          "input_name": null,
+          "id": "retries"
+        },
+        {
+          "value": 0.2,
+          "input_name": null,
+          "id": "distance_threshold"
+        }
+      ],
+      "action_type": "move_to_position"
+    }
+  ],
+  "rmf_move_to_position": [
+    {
+      "action_type": "move",
+      "priority": 1,
+      "parameters": [
+        {
+          "value": "to be replaced with a value guid in the fleet adapter",
+          "input_name": "end_waypoint",
+          "id": "position"
+        },
+        {
+          "value": 10,
+          "input_name": null,
+          "id": "retries"
+        },
+        {
+          "value": 0.2,
+          "input_name": null,
+          "id": "distance_threshold"
+        }
+      ]
+    }
+  ]
+}
