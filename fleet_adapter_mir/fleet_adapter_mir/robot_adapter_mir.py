@@ -819,16 +819,24 @@ class RobotAdapterMiR:
                 self.current_action.context.execution.finished()
             self.current_action = None
 
+        action_factory = None
         plugin_name = self.action_to_plugin_name.get(category)
         if plugin_name:
             action_factory = self.action_factories.get(plugin_name)
-            if action_factory:
-                # Valid action-plugin pair exists, create MirAction object
-                action_obj = action_factory.perform_action(
-                    category, description, execution
-                )
-                self.current_action = action_obj
-                return
+        else:
+            for plugin, factory in self.action_factories.items():
+                if factory.supports_action(category):
+                    self.action_to_plugin_name[category] = plugin
+                    action_factory = factory
+                    break
+
+        if action_factory:
+            # Valid action-plugin pair exists, create MirAction object
+            action_obj = action_factory.perform_action(
+                category, description, execution
+            )
+            self.current_action = action_obj
+            return
 
         # No relevant perform action found
         self.node.get_logger().info(
