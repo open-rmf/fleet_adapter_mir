@@ -18,7 +18,7 @@ from urllib.error import HTTPError
 from fleet_adapter_mir.robot_adapter_mir import ActionContext
 
 
-class CartDetection(ABC):
+class BaseCartDetection(ABC):
     def __init__(self, context: ActionContext):
         self.context = context
 

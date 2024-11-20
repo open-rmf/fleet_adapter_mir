@@ -54,7 +54,7 @@ class Dropoff:
 
 class ActionFactory(MirActionFactory):
     def __init__(self, context: ActionContext):
-        MirActionFactory.__init__(context)
+        MirActionFactory.__init__(self, context)
         # Raise error if config file is invalid
         # NOTE(@xiyuoh) Using if-else to check for valid keys in the action
         # config is not the most scalable. Consider other ways to do this.

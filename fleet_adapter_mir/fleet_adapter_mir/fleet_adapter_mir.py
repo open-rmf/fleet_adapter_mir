@@ -176,8 +176,10 @@ def create_fleet(
     debug = config_yaml['rmf_fleet']['debug']
     plugin_config = config_yaml.get('plugins')
     # Add all plugin actions to the fleet
-    def _consider(description, confirm: rmf_fleet.Confirmation):
+    def _consider(description: dict):
+        confirm = rmf_fleet.Confirmation()
         confirm.accept()
+        return confirm
     for plugin_name, plugin_data in plugin_config.items():
         plugin_actions = plugin_data.get('actions')
         if not plugin_actions:
@@ -190,7 +192,7 @@ def create_fleet(
             )
             continue
         for action in plugin_actions:
-            fleet_handle.add_performable_action(action, _consider)
+            fleet_handle.more().add_performable_action(action, _consider)
 
 
     event_loop = asyncio.new_event_loop()
