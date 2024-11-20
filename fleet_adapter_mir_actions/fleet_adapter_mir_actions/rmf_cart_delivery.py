@@ -119,6 +119,7 @@ class ActionFactory(MirActionFactory):
         description: dict,
         execution
     ) -> MirAction:
+        execution.set_automatic_cancel(False)
         match category:
             case 'delivery_pickup':
                 return CartPickup(
