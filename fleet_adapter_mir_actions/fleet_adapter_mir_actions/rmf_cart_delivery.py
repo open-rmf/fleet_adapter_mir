@@ -154,17 +154,6 @@ class CartPickup(MirAction):
             context.api.docking_offsets_guid_get(
                 context.action_config['marker_types']['cart'])
 
-        # Check if the robot's latch is currently open
-        if self.cart_detection.is_latch_open():
-            # Latch is open, unable to perform pickup
-            self.context.node.get_logger().info(
-                f'Robot [{self.context.name}] latch is open, unable to '
-                f'perform pickup, cancelling task...')
-            self.cancel_task(
-                label='Robot latch is still open, unable to perform pickup.'
-            )
-            return
-
         # Begin action
         self.context.node.get_logger().info(
             f'New pickup requested for robot [{self.context.name}]')
@@ -175,6 +164,16 @@ class CartPickup(MirAction):
             mission=None,
             latching=False
         )
+
+        # Check if the robot's latch is currently open
+        if self.cart_detection.is_latch_open():
+            # Latch is open, unable to perform pickup
+            self.context.node.get_logger().info(
+                f'Robot [{self.context.name}] latch is open, unable to '
+                f'perform pickup, cancelling task...')
+            self.cancel_task(
+                label='Robot latch is still open, unable to perform pickup.'
+            )
 
     def update_action(self):
         return self.update_pickup(self.pickup)
