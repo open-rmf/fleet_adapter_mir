@@ -68,6 +68,22 @@ class MissionHandle:
         return None
 
 
+class ActionContext:
+    def __init__(self,
+                 node: Node,
+                 name: str,
+                 mir_api: MirAPI,
+                 update_handle,  # rmf_fleet_adapter.RobotUpdateHandle
+                 fleet_config: rmf_easy.FleetConfiguration,
+                 action_config: dict):
+        self.node = node
+        self.name = name
+        self.api = mir_api
+        self.update_handle = update_handle
+        self.fleet_config = fleet_config
+        self.action_config = action_config
+
+
 class RobotAdapterMiR:
     def __init__(
         self,
@@ -142,8 +158,57 @@ class RobotAdapterMiR:
         # Track the current ongoing action
         self.current_action = None
 
-        # Store all the configured plugin action configs
-        self.plugin_config = plugin_config
+        # Import and store plugin actions and action factories
+        self.action_to_plugin_name = {}  # Maps action name to plugin name
+        self.action_factories = {}  # Maps plugin name to action factory
+        for plugin_name, action_config in plugin_config.items():
+            try:
+                module = action_config['module']
+                plugin = importlib.import_module(module)
+                action_context = ActionContext(
+                    self.node, self.name, self.api, self.update_handle,
+                    self.fleet_config, action_config
+                )
+                action_factory = plugin.ActionFactory(action_context)
+                for action in action_factory.actions:
+                    # Verify that this action is not duplicated across plugins
+                    target_plugin = self.action_to_plugin_name.get(action)
+                    if (target_plugin is not None and
+                            target_plugin != plugin_name):
+                        raise Exception(
+                            f'Action [{action}] is indicated to be supported '
+                            f'by multiple plugins: {target_plugin} and '
+                            f'{plugin_name}. The fleet adapter is unable to '
+                            f'select the intended plugin to be paired for '
+                            f'this action. Please ensure that action names '
+                            f'are not duplicated across supported plugins. '
+                            f'Unable to create ActionFactory for '
+                            f'{plugin_name}. Robot [{self.name}] will not be '
+                            f'able to perform actions associated with this '
+                            f'plugin.'
+                        )
+                    # Verify that this ActionFactory supports this action
+                    if not action_factory.supports_action(action):
+                        raise ValueError(
+                            f'The plugin config provided [{action}] as a '
+                            f'performable action, but it is not a supported '
+                            f'action in the {plugin_name} ActionFactory!'
+                        )
+                    self.action_to_plugin_name[action] = plugin_name
+                self.action_factories[plugin_name] = action_factory
+            except KeyError:
+                self.node.get_logger().info(
+                    f'Unable to create ActionFactory for {plugin_name}! '
+                    f'Configured plugin config is invalid. '
+                    f'Robot [{self.name}] will not be able to perform '
+                    f'actions associated with this plugin.'
+                )
+            except ImportError:
+                self.node.get_logger().info(
+                    f'Unable to import module for {plugin_name}! '
+                    f'Robot [{self.name}] will not be able to perform '
+                    f'actions associated with this plugin.'
+                )
 
     @property
     def activity(self):
@@ -212,11 +277,14 @@ class RobotAdapterMiR:
             # PerformAction related checks
             if self.current_action:
                 if self.current_action.update_action():
-                    # This means that the action has ended, we can clear the
-                    # current action object
+                    # This means that the action has ended, we can mark the
+                    # ActionExecution as finished and clear the current action
+                    # object
                     self.node.get_logger().info(
                         f'Robot [{self.name}] has completed its current '
-                        f'action.')
+                        f'action, marking execution as finished.')
+                    if self.current_action.execution is not None:
+                        self.current_action.execution.finished()
                     self.current_action = None
 
             # Clear error on updates
@@ -292,22 +360,12 @@ class RobotAdapterMiR:
                 self.node.get_logger().info(f'Issue ticket is resolved!')
                 self.replan_counts = 0
         elif mission_status['state'] == 'Aborted':
-            # The robot is unable to perform the mission for some reason, so we
-            # raise an issue and re-attempt the mission.
-            tier = Tier.Error
-            category = mission_status['state']
-            detail = {
-                'mission_queue_id': mission.mission_queue_id,
-                'message': 'Mission has been aborted.'
-            }
-            # Save the issue ticket somewhere so that we can resolve it later
-            self.nav_issue_ticket = \
-                self.update_handle.more().create_issue(tier, category, detail)
-            self.node.get_logger().info(
-                f'Created [{category}] issue ticket for mission queue ID '
-                f'[{mission.mission_queue_id}]')
-
-            # After issuing a ticket, let's request a replan
+            # Create navigation issue ticket and replan
+            self.nav_issue_ticket = self.create_nav_issue_ticket(
+                mission_status['state'],
+                'Mission has been aborted.',
+                mission.mission_queue_id
+            )
             mission.done = True
             self.update_handle.more().replan()
             # We keep track of the number of times we are replanning for the
@@ -456,16 +514,16 @@ class RobotAdapterMiR:
         # Used for exiting while loop early in the event that for whatever
         # reason the robot starts performing a different mission, while the
         # original navigation mission is ongoing
-        navigation_mission_identifier = mission_handle.execution.identifier
+        navigation_mission_identifier = mission_handle.activity
         mission_queue_id = None
         count = 0
         retry_count = 10
         while count < retry_count and not mission_queue_id:
             if (navigation_mission_identifier !=
-                    mission_handle.execution.identifier):
+                    mission_handle.activity):
                 self.node.get_logger().info(
                     f'[{self.name}] MissionHandle has changed to '
-                    f'{mission_handle.execution.identifier}, interrupting '
+                    f'{mission_handle.activity}, interrupting '
                     f'navigation mission {navigation_mission_identifier}. '
                     f'Stopping original navigation mission loop.')
                 break
@@ -496,12 +554,12 @@ class RobotAdapterMiR:
 
         if (mission_queue_id is None and
                 navigation_mission_identifier !=
-                mission_handle.execution.identifier):
+                mission_handle.activity):
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to move to '
                 f'destination. Navigation step '
                 f'{navigation_mission_identifier} interrupted by new mission '
-                f'{mission_handle.execution.identifier}.'
+                f'{mission_handle.activity}.'
             )
             return
 
@@ -509,7 +567,12 @@ class RobotAdapterMiR:
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to move to '
                 f'destination. Maximum request navigate retries exceeded!')
-            mission_handle.execution.finished()
+            # Create navigation issue ticket and replan
+            self.nav_issue_ticket = self.create_nav_issue_ticket(
+                'Unable to post mission',
+                'No mission queue ID received for request_navigate'
+            )
+            self.update_handle.more().replan()
             return
 
         mission_handle.set_mission_queue_id(mission_queue_id)
@@ -523,16 +586,16 @@ class RobotAdapterMiR:
         # Used for exiting while loop early in the event that for whatever
         # reason the robot starts performing a different mission, while the
         # original navigation mission is ongoing
-        navigation_mission_identifier = mission_handle.execution.identifier
+        navigation_mission_identifier = mission_handle.activity
         mission_queue_id = None
         count = 0
         retry_count = 10
         while count < retry_count and not mission_queue_id:
             if (navigation_mission_identifier !=
-                    mission_handle.execution.identifier):
+                    mission_handle.activity):
                 self.node.get_logger().info(
                     f'[{self.name}] MissionHandle has changed to '
-                    f'{mission_handle.execution.identifier}, interrupting '
+                    f'{mission_handle.activity}, interrupting '
                     f'navigation mission {navigation_mission_identifier}.'
                     f' Stopping original navigation mission loop.')
                 break
@@ -555,12 +618,12 @@ class RobotAdapterMiR:
 
         if (mission_queue_id is None and
                 navigation_mission_identifier !=
-                mission_handle.execution.identifier):
+                mission_handle.activity):
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to move to known '
                 f'position. Navigation step {navigation_mission_identifier} '
                 f'interrupted by new mission '
-                f'{mission_handle.execution.identifier}.'
+                f'{mission_handle.activity}.'
             )
             return
 
@@ -568,7 +631,12 @@ class RobotAdapterMiR:
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to move to known '
                 f'position. Maximum request navigate retries exceeded!')
-            mission_handle.execution.finished()
+            # Create navigation issue ticket and replan
+            self.nav_issue_ticket = self.create_nav_issue_ticket(
+                'Unable to post mission',
+                'No mission queue ID received for request_go_to_known_position'
+            )
+            self.update_handle.more().replan()
             return
 
         mission_handle.set_mission_queue_id(mission_queue_id)
@@ -584,16 +652,16 @@ class RobotAdapterMiR:
         # Used for exiting while loop early in the event that for whatever
         # reason the robot starts performing a different mission, while the
         # original navigation mission is ongoing
-        docking_mission_identifier = mission_handle.execution.identifier
+        docking_mission_identifier = mission_handle.activity
         mission_queue_id = None
         count = 0
         retry_count = 10
         while count < retry_count and not mission_queue_id:
             if (docking_mission_identifier !=
-                    mission_handle.execution.identifier):
+                    mission_handle.activity):
                 self.node.get_logger().info(
                     f'[{self.name}] MissionHandle has changed to '
-                    f'{mission_handle.execution.identifier}, interrupting '
+                    f'{mission_handle.activity}, interrupting '
                     f'navigation mission {docking_mission_identifier}. '
                     f'Stopping original docking mission loop.')
                 break
@@ -626,12 +694,12 @@ class RobotAdapterMiR:
 
         if (mission_queue_id is None and
                 docking_mission_identifier !=
-                mission_handle.execution.identifier):
+                mission_handle.activity):
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to dock to '
                 f'destination. Docking step {docking_mission_identifier} '
                 f'interrupted by new mission '
-                f'{mission_handle.execution.identifier}.'
+                f'{mission_handle.activity}.'
             )
             return
 
@@ -639,7 +707,12 @@ class RobotAdapterMiR:
             self.node.get_logger().info(
                 f'[{self.name}] Failed to request robot to dock to '
                 f'destination. Maximum request navigate retries exceeded!')
-            mission_handle.execution.finished()
+            # Create navigation issue ticket and replan
+            self.nav_issue_ticket = self.create_nav_issue_ticket(
+                'Unable to post mission',
+                'No mission queue ID received for request_dock'
+            )
+            self.update_handle.more().replan()
             return
 
         mission_handle.set_mission_queue_id(mission_queue_id)
@@ -666,7 +739,7 @@ class RobotAdapterMiR:
                     f'ignoring stop issued by RMF')
                 return
             if (mission.execution is not None and
-                    activity.is_same(mission.execution.identifier)):
+                    activity.is_same(mission.activity)):
                 self.node.get_logger().info(
                     f'[{self.name}] Stop requested from RMF!')
                 self.request_stop(mission)
@@ -725,8 +798,12 @@ class RobotAdapterMiR:
                 f'[{self.name}] Failed to localize on map {estimate.map}. '
                 f'Maximum localize retries exceeded!'
             )
-            mission.execution.finished()
-            mission_queue_id = None
+            # Create navigation issue ticket and replan
+            self.nav_issue_ticket = self.create_nav_issue_ticket(
+                'Unable to post mission',
+                'No mission queue ID received for request_localize'
+            )
+            self.update_handle.more().replan()
             return
 
         mission.set_mission_queue_id(mission_queue_id)
@@ -734,27 +811,33 @@ class RobotAdapterMiR:
     def perform_action(self, category, description, execution):
         if self.current_action:
             # Should not reach here, but we log an error anyway
-            self.node.get_logger().info(
-                f'Robot [{self.name}] is busy with another perform action! '
-                f'Ignoring new action [{category}]')
-            execution.finished()
-            return
+            self.node.get_logger().error(
+                f'Robot [{self.name}] received a new action while it is busy '
+                f'with another perform action! Ending current action and '
+                f'accepting incoming action [{category}]')
+            if self.current_action.context.execution is not None:
+                self.current_action.context.execution.finished()
+            self.current_action = None
 
-        for plugin_name, config in self.plugin_config.items():
-            actions = config['actions']
-            if category in actions:
-                # Import relevant plugin
-                module = config['module']
-                plugin = importlib.import_module(module)
-                # Create the relevant MirAction
-                action_obj = plugin.ActionFactory().make_action(
-                    self.node, self.name, self.api, self.update_handle,
-                    self.fleet_config, config)
-                # Begin performing the plugin action
-                action_obj.perform_action(category, description, execution)
-                # Keep track of the current action
-                self.current_action = action_obj
-                return
+        action_factory = None
+        plugin_name = self.action_to_plugin_name.get(category)
+        if plugin_name:
+            action_factory = self.action_factories.get(plugin_name)
+        else:
+            for plugin, factory in self.action_factories.items():
+                if factory.supports_action(category):
+                    self.action_to_plugin_name[category] = plugin
+                    factory.actions.append(category)
+                    action_factory = factory
+                    break
+
+        if action_factory:
+            # Valid action-plugin pair exists, create MirAction object
+            action_obj = action_factory.perform_action(
+                category, description, execution
+            )
+            self.current_action = action_obj
+            return
 
         # No relevant perform action found
         self.node.get_logger().info(
@@ -765,3 +848,19 @@ class RobotAdapterMiR:
         assert (len(A) > 1)
         assert (len(B) > 1)
         return math.sqrt((A[0] - B[0])**2 + (A[1] - B[1])**2)
+
+    def create_nav_issue_ticket(self, category, msg, mission_queue_id=None):
+        # The robot is unable to perform the mission for some reason, so we
+        # raise an issue and re-attempt the mission.
+        tier = Tier.Error
+        detail = {
+            'mission_queue_id': mission_queue_id,
+            'message': msg
+        }
+        # Save the issue ticket somewhere so that we can resolve it later
+        nav_issue_ticket = \
+            self.update_handle.more().create_issue(tier, category, detail)
+        self.node.get_logger().info(
+            f'Created [{category}] issue ticket for robot [{self.name}] with '
+            f'mission queue ID [{mission_queue_id}]')
+        return nav_issue_ticket

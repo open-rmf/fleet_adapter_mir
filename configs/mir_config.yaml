@@ -80,7 +80,7 @@ rmf_fleet:
     delivery: True
     clean: False
   finishing_request: "charge" # [park, charge, nothing]
-  actions: ["rmf_cart_delivery", "delivery_pickup", "delivery_dropoff", "rmf_multistop", "wait_until"]
+  actions: ["delivery_pickup", "delivery_dropoff"]
   robots:
     mir_1:
       charger: "Charger_1"
@@ -97,29 +97,22 @@ rmf_fleet:
 plugins:
   rmf_cart_delivery:
     module: "fleet_adapter_mir_actions.rmf_cart_delivery"
-    class: "CartDelivery"
-    actions: ["rmf_cart_delivery", "delivery_pickup", "delivery_dropoff"]
+    actions: ["delivery_pickup", "delivery_dropoff"]
     cart_detection_module: "fleet_adapter_mir_actions.rmf_cart_detection"
     missions:
       dock_to_cart: "rmf_dock_to_cart" # Name of MiR mission for robot to dock under a cart - to be created by fleet adapter upon launch
       pickup: "rmf_pickup_cart" # Name of MiR mission for robot to latch onto a cart - to be created and filled in by user
       dropoff: "rmf_dropoff_cart" # Name of MiR mission for robot to unlatch and exit from under a cart - to be created and filled in by user
       exit_lot: "rmf_exit_lot" # Name of MiR mission for robot to exit from under a cart - to be created by fleet adapter upon launch
-      update_footprint: "rmf_update_footprint" # Name of MiR mission for robot to update the footprint of a robot - to be created by fleet adapter upon launch
-    footprints:
-      robot: "MiR100-200" # Name of robot footprint stored on MiR
-      cart: "ShelfCart" # Name of cart footprint stored on MiR
     marker_types:
       cart: "AsymmetricShelf" # Name of cart marker type
     missions_json: "/home/some_user/mir_ws/src/fleet_adapter_mir/missions/rmf_cart_missions.json"  # Filepath to RMF cart delivery missions
-    search_timeout: 60
-    pickup_dist_threshold: 3.0 # metres
+    search_timeout: 60 # Dock to cart timeout in seconds
     # Examples of additional fields for cart detection module
     io_name: "MiR internal IOs"
     latch_io: 2
   rmf_wait_until:
     module: "fleet_adapter_mir_actions.rmf_wait_until"
-    class: "WaitUntil"
     actions: ["rmf_multistop", "wait_until"]
     timeout: 1800 # seconds, default timeout if there is no move-off signal received
     # Optional fields to configure default move-off signal
@@ -128,3 +121,4 @@ plugins:
     resubmit_on_abort: False # Optional field for signal type "mission". Set to True to resubmit mission if the mission gets aborted by the robot. Default to False.
     plc_register: 20 # Required field if signal type is "plc". Robot moves off when PLC register returns True
     move_off_module: "fleet_adapter_mir_actions.rmf_move_off_alert" # Required field if signal type is "custom". Fill in with path to custom module written.
+    action_categories: ["custom_mission_1"]
