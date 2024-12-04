@@ -24,17 +24,12 @@ from rmf_task_msgs.msg import Alert
 from rmf_task_msgs.msg import AlertResponse
 from rmf_task_msgs.msg import AlertParameter
 
+from fleet_adapter_mir.robot_adapter_mir import ActionContext
 
-class MoveOff:
-    def __init__(
-            self,
-            action_handle,
-            signal_config,
-            task_description
-    ):
-        self.action = action_handle
-        self.config = signal_config
-        self.task_desc = task_description
+
+class MoveOff(BaseMoveOff):
+    def __init__(self, context: ActionContext):
+        MoveOff.__init__(self, context)
 
         '''
         This example demonstrates how we can notify the robot to move off when
@@ -42,7 +37,7 @@ class MoveOff:
         '''
         self.mutex = Lock()
         self.alert = None
-        self.move_off = False
+        self.ready = False
 
         # Create alert related publisher and subscribers
         transient_qos = QoSProfile(
@@ -51,13 +46,13 @@ class MoveOff:
             reliability=Reliability.RELIABLE,
             durability=Durability.TRANSIENT_LOCAL,
         )
-        self.alert_response_sub = self.action.node.create_subscription(
+        self.alert_response_sub = self.context.node.create_subscription(
             AlertResponse,
             'alert_response',
             self.alert_response_cb,
             qos_profile=transient_qos
         )
-        self.alert_pub = self.action.node.create_publisher(
+        self.alert_pub = self.context.node.create_publisher(
             Alert,
             'alert',
             qos_profile=transient_qos
@@ -68,21 +63,21 @@ class MoveOff:
         msg = Alert()
         msg.id = datetime.datetime.now().strftime(
             "alert-%Y-%m-%d-%H-%M-%S")
-        msg.title = f'Robot [{self.action.name}] has begun waiting.'
+        msg.title = f'Robot [{self.context.name}] has begun waiting.'
         msg.tier = Alert.TIER_INFO
         msg.responses_available = ['ready']
-        msg.task_id = self.action.update_handle.more().current_task_id()
+        msg.task_id = self.context.update_handle.more().current_task_id()
         self.alert_pub.publish(msg)
-        self.action.node.get_logger().info(
-            f'Robot [{self.action.name}] published alert [{msg.id}] to signal '
+        self.context.node.get_logger().info(
+            f'Robot [{self.context.name}] published alert [{msg.id}] to signal '
             f'that it has started waiting.'
         )
         self.alert = msg
 
     def is_move_off_ready(self):
         with self.mutex:
-            if self.move_off:
-                # This move-off object is created everytime the robot begins a
+            if self.ready:
+                # This `ready` variable is created everytime the robot begins a
                 # wait_until action, so there is no need to toggle it back to
                 # False
                 return True
@@ -95,15 +90,15 @@ class MoveOff:
             return
 
         if msg.response != 'ready':
-            self.node.get_logger().info(
-                f'Robot [{self.name}] received invalid response inside alert '
-                f'response: [{msg.response}], ignoring...'
+            self.context.node.get_logger().info(
+                f'Robot [{self.context.name}] received invalid response '
+                f'inside alert response: [{msg.response}], ignoring...'
             )
             return
 
-        self.node.get_logger().info(
-            f'Robot [{self.name}] received move-off signal, delivery is '
-            f'complete, marking action as completed.'
+        self.context.node.get_logger().info(
+            f'Received move off signal, robot [{self.context.name}] is done '
+            f'waiting, marking action as completed.'
         )
         with self.mutex:
-            self.move_off = True
+            self.ready = True

@@ -113,12 +113,14 @@ plugins:
     latch_io: 2
   rmf_wait_until:
     module: "fleet_adapter_mir_actions.rmf_wait_until"
-    actions: ["rmf_multistop", "wait_until"]
-    timeout: 1800 # seconds, default timeout if there is no move-off signal received
-    # Optional fields to configure default move-off signal
-    signal_type: "mission" # [mission, plc, or custom], if not provided the robot will wait the full duration of the default timeout
-    mission_name: "some_mission_name" # Required field if signal type is "mission". The mission will be queued when the action starts, and the robot will move off when the mission is completed.
-    resubmit_on_abort: False # Optional field for signal type "mission". Set to True to resubmit mission if the mission gets aborted by the robot. Default to False.
-    plc_register: 20 # Required field if signal type is "plc". Robot moves off when PLC register returns True
-    move_off_module: "fleet_adapter_mir_actions.rmf_move_off_alert" # Required field if signal type is "custom". Fill in with path to custom module written.
-    action_categories: ["custom_mission_1"]
+    actions: ["wait_until"]
+    timeout: 1800 # Optional, in seconds. Timeout if there is no move-off signal received, after which robot will move off regardless. Default to 60 seconds.
+    signal_type: # Defines the default configs for various move off signal types. If this field is not provided, the robot will wait the full duration of the default timeout. Signal configs can be overridden by task description.
+      # Currently three signal types are supported: [mission, plc, custom].
+      mission:
+        mission_name: "some_mission_name" # If this mission is found on the robot, it will be queued when the action starts, and the robot will move off when the mission is completed.
+        resubmit_on_abort: False # Optional field for signal type "mission". Set to True to resubmit mission if the mission gets aborted by the robot. Default to False.
+        retry_count: 10 # Optional field for signal type "mission". The fleet adapter will re-attempt queueing the mission for this number of tries.
+      plc: 20 # Fill in with PLC register number. Robot moves off when this PLC register returns True
+      custom:
+        module: "fleet_adapter_mir_actions.rmf_move_off_on_alert" # Fill in with path to custom module written. Robot moves off when module provides the user-defined move off signal.
