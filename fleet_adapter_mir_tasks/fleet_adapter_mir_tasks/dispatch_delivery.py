@@ -124,10 +124,10 @@ class TaskRequester(Node):
         description["phases"].append(
             {"activity": {"category": "sequence",
                           "description": {
-                              "activities": pickup_action_activity}}},
+                              "activities": pickup_action_activity}},
             # Cancellation behavior for pickup phase: dropoff cart if robot has
             # completed the pickup cart action.
-            {"on_cancel": {
+            "on_cancel": [{
                 "category": "sequence",
                 "description": [{
                     "category": "perform_action",
@@ -136,7 +136,8 @@ class TaskRequester(Node):
                         "category": "delivery_dropoff",
                         "description": {}
                     }
-                }]}})
+                }]}]
+            })
         # GoToPlace activity
         go_to_dropoff_activity = [{
             "category": "go_to_place",
@@ -145,7 +146,7 @@ class TaskRequester(Node):
         description["phases"].append(
             {"activity": {"category": "sequence",
                           "description": {
-                              "activities": go_to_dropoff_activity}}},
+                              "activities": go_to_dropoff_activity}},
             # NOTE(@xiyuoh) If the given site is unsafe for the robot to
             # dropoff a cart at random locations, integrators may choose to add
             # on to this cancellation behavior to ensure that the robot travels
@@ -153,7 +154,7 @@ class TaskRequester(Node):
 
             # Cancellation behavior for GoToPlace phase: dropoff cart at the
             # current spot if robot is detected to be carrying a cart.
-            {"on_cancel": {
+            "on_cancel": [{
                 "category": "sequence",
                 "description": [{
                     "category": "perform_action",
@@ -162,7 +163,8 @@ class TaskRequester(Node):
                         "category": "delivery_dropoff",
                         "description": {}
                     }
-                }]}})
+                }]}]
+            })
         # Dropoff activity
         dropoff_action_activity = [{
             "category": "perform_action",
