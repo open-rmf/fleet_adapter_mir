@@ -98,7 +98,7 @@ plugins:
   rmf_cart_delivery:
     module: "fleet_adapter_mir_actions.rmf_cart_delivery"
     actions: ["delivery_pickup", "delivery_dropoff"]
-    cart_detection_module: "fleet_adapter_mir_actions.rmf_cart_detection"
+    cart_detection_module: "some_pkg_name.some_cart_detection_module" # Replace with your own plugin module
     missions:
       dock_to_cart: "rmf_dock_to_cart" # Name of MiR mission for robot to dock under a cart - to be created by fleet adapter upon launch
       pickup: "rmf_pickup_cart" # Name of MiR mission for robot to latch onto a cart - to be created and filled in by user

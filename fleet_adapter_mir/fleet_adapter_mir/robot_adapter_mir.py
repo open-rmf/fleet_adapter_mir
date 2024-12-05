@@ -815,8 +815,8 @@ class RobotAdapterMiR:
                 f'Robot [{self.name}] received a new action while it is busy '
                 f'with another perform action! Ending current action and '
                 f'accepting incoming action [{category}]')
-            if self.current_action.context.execution is not None:
-                self.current_action.context.execution.finished()
+            if self.current_action.execution is not None:
+                self.current_action.execution.finished()
             self.current_action = None
 
         action_factory = None
