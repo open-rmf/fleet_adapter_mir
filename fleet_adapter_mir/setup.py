@@ -21,6 +21,7 @@ setup(
         'console_scripts': [
             'fleet_adapter_mir=fleet_adapter_mir.fleet_adapter_mir:main',
             'rmf_cart_delivery=fleet_adapter_mir.rmf_cart_delivery:CartDelivery',
+            'rmf_wait_until=fleet_adapter_mir.rmf_wait_until:WaitUntil',
         ],
     },
 )
