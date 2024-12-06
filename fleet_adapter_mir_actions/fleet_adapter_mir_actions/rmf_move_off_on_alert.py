@@ -69,8 +69,8 @@ class MoveOff(BaseMoveOff):
         msg.task_id = self.context.update_handle.more().current_task_id()
         self.alert_pub.publish(msg)
         self.context.node.get_logger().info(
-            f'Robot [{self.context.name}] published alert [{msg.id}] to signal '
-            f'that it has started waiting.'
+            f'Robot [{self.context.name}] published alert [{msg.id}] to '
+            f'signal that it has started waiting.'
         )
         self.alert = msg
 

@@ -146,13 +146,14 @@ class WaitUntil(MirAction):
                 f'task...'
             )
             self.cancel_task(
-                label='Move off behavior cannot be configured, unable to ' + \
-                    'perform wait until action.'
+                label='Move off behavior cannot be configured, unable to '
+                      'perform wait until action.'
             )
             return
 
         self.update_gap = description.get(
-            'update_gap', context.action_config.get('update_gap', 60))  # seconds
+            'update_gap',
+            context.action_config.get('update_gap', 60))  # seconds
         self.wait_timeout = description.get(
             'timeout', context.action_config.get('timeout', 60))  # seconds
         self.signal_config = context.action_config.get('signal_type')
@@ -165,6 +166,7 @@ class WaitUntil(MirAction):
     def cancel_task(self, label: str = ''):
         def _cancel_success():
             pass
+
         def _cancel_fail():
             pass
         self.cancel_task_of_action(_cancel_success, _cancel_fail, label)
@@ -198,7 +200,7 @@ class WaitUntil(MirAction):
 
         # Log the robot waiting every X seconds
         seconds_passed = round(now - self.start_time)
-        if seconds_passed%self.update_gap == 0:
+        if seconds_passed % self.update_gap == 0:
             self.context.node.get_logger().info(
                 f'{seconds_passed} seconds have passed since robot '
                 f'[{self.context.name}] started its waiting action.'
@@ -215,7 +217,8 @@ class WaitUntil(MirAction):
         # action config.
         if 'signal_type' in description:
             signal_type = description['signal_type']
-        elif self.signal_config is not None and 'default' in self.signal_config:
+        elif self.signal_config is not None and \
+                'default' in self.signal_config:
             signal_type = self.signal_config['default']
         else:
             # There is no move off signal provided, we will just wait for the
@@ -272,8 +275,8 @@ class WaitUntil(MirAction):
                     return None
                 mission_actions = \
                     self.context.api.missions_mission_id_actions_get(
-                    self.context.api.known_missions[mission_name]['guid']
-                )
+                        self.context.api.known_missions[mission_name]['guid']
+                    )
                 if not mission_actions:
                     self.context.node.get_logger().info(
                         f'Mission {mission_name} actions not found on robot '
@@ -290,8 +293,9 @@ class WaitUntil(MirAction):
                         f'[{self.context.name}]...'
                     )
                     try:
-                        mission_queue_id = self.context.api.queue_mission_by_name(
-                            mission_name)
+                        mission_queue_id = \
+                            self.context.api.queue_mission_by_name(
+                                mission_name)
                         if mission_queue_id is not None:
                             break
                     except Exception as err:
@@ -313,8 +317,8 @@ class WaitUntil(MirAction):
                 signal_cb = lambda: self.check_mission_complete(
                     mission_name, mission_queue_id, resubmit_on_abort)
                 self.context.node.get_logger().info(
-                    f'Configuring robot [{self.context.name}] move off signal: '
-                    f'robot will wait until mission {mission_name} with '
+                    f'Configuring robot [{self.context.name}] move off signal'
+                    f': robot will wait until mission {mission_name} with '
                     f'mission queue id {mission_queue_id} is completed.'
                 )
             case "plc":
@@ -382,7 +386,8 @@ class WaitUntil(MirAction):
         mission_queue_id,
         resubmit_on_abort
     ):
-        mission_status = self.context.api.mission_queue_id_get(mission_queue_id)
+        mission_status = \
+            self.context.api.mission_queue_id_get(mission_queue_id)
         if (mission_status is not None and
                 mission_status['state'] == 'Done'):
             # Mission has completed, we can set move_off to True

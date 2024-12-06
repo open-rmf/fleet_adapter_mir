@@ -57,7 +57,8 @@ class TaskRequester(Node):
         parser.add_argument('-r', '--resubmit_on_abort', type=bool,
                             help='Resubmit mission if aborted by robot')
         parser.add_argument('-rc', '--retry_count', required=False, default=-1,
-                            type=int, help='Number of retries to queue mission')
+                            type=int,
+                            help='Number of retries to queue mission')
         parser.add_argument('-p', '--plc_register', type=int,
                             help='PLC register number')
         parser.add_argument('-st', '--start_time',
@@ -125,8 +126,9 @@ class TaskRequester(Node):
             description["phases"].append({
                 "activity": {
                     "category": "sequence",
-                    "description": {"activities": go_to_place_activity
-            }}})
+                    "description": {"activities": go_to_place_activity}
+                }
+            })
             # Configure wait_until description
             signal_type = self.args.signal_type
             signal_config = {}
@@ -135,7 +137,8 @@ class TaskRequester(Node):
                     if self.args.mission != '':
                         signal_config['mission_name'] = self.args.mission_name
                     if self.args.resubmit_on_abort is not None:
-                        signal_config['resubmit_on_abort'] = self.args.resubmit_on_abort
+                        signal_config['resubmit_on_abort'] = \
+                            self.args.resubmit_on_abort
                     if self.args.retry_count > -1:
                         signal_config['retry_count'] = self.args.retry_count
                 case "plc":
@@ -155,14 +158,18 @@ class TaskRequester(Node):
                     "category": 'wait_until',
                     "description": {
                         "timeout": self.args.timeout,  # seconds
-                        "update_gap": self.args.update_gap, # seconds,
+                        "update_gap": self.args.update_gap,  # seconds,
                         "signal_type": signal_type,
                         "signal_config": signal_config
-            }}}]
+                    }
+                }
+            }]
             if self.args.timeout is not None:
-                wait_activity[0]['description']['description']['timeout'] = self.args.timeout
+                wait_activity[0]['description']['description']['timeout'] = \
+                    self.args.timeout
             if self.args.update_gap is not None:
-                wait_activity[0]['description']['description']['update_gap'] = self.args.update_gap
+                wait_activity[0]['description']['description']['update_gap'] = \
+                    self.args.update_gap
             description["phases"].append({
                 "activity": {
                     "category": "sequence",
