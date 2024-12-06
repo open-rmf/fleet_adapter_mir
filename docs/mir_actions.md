@@ -84,6 +84,8 @@ The plugin also supports task-specific move off signals, such that different sig
 
 It is possible to submit tasks with move off signals that have not been configured in the plugin config. However, it is up to the user to ensure that these signal types are valid and compatible with the MiR.
 
+You may refer to the Examples section below to get a clearer idea of how to customize signal types with plugin config and task descriptions.
+
 ### Setup
 
 Users can configure multiple move off signals for their robot fleet in the fleet's plugin config, up to one of each supported signal type. If the task description does not provide sufficient information to configure a signal type, the fleet adapter will refer to the plugin config. This is suitable for users who only require a single signal type for their tasks. If signal types are not configured in the plugin config nor the task description, the robot will not have a move off signal set up, and simply wait for the full duration of the timeout during the action.
@@ -135,3 +137,13 @@ ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 way
 - `-p`: Further specifies the PLC register number for signal type `plc`.
 
 Do note that this task involves using the same move off signal for every waypoint the robot travels to.
+
+### Examples
+
+**Example 1: Overriding specific fields from plugin config using task description**
+
+![wait_until_example_A](../_images/docs/wait_until_task_A.png)
+
+**Example 2: Overriding WaitUntil's default field using task description**
+
+![wait_until_example_B](../_images/docs/wait_until_task_B.png)
