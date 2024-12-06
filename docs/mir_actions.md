@@ -144,6 +144,14 @@ Do note that this task involves using the same move off signal for every waypoin
 
 ![wait_until_example_A](../_images/docs/wait_until_task_A.png)
 
-**Example 2: Overriding WaitUntil's default field using task description**
+**Example 2: Configuring a signal type not found in plugin config**
 
 ![wait_until_example_B](../_images/docs/wait_until_task_B.png)
+
+**Example 3: Use WaitUntil's default timeout and select a configured signal type using task description**
+
+![wait_until_example_C](../_images/docs/wait_until_task_C.png)
+
+**Example 4: Let robot simply wait during the action without any move off signal configured**
+
+![wait_until_example_D](../_images/docs/wait_until_task_D.png)
