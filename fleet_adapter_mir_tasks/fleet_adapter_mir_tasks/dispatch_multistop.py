@@ -46,8 +46,20 @@ class TaskRequester(Node):
         parser.add_argument('-g', '--go_to', required=True, nargs='+',
                             type=str,
                             help='Places to go to for multistop task')
-        parser.add_argument('-t', '--timeout', required=False, default=30,
-                            type=int, help='Number of seconds to timeout')
+        parser.add_argument('-t', '--timeout', type=int,
+                            help='Number of seconds to timeout')
+        parser.add_argument('-u', '--update_gap', type=int,
+                            help='Number of seconds between logging updates')
+        parser.add_argument('-s', '--signal_type', required=True,
+                            type=str, help='Move off signal type')
+        parser.add_argument('-m', '--mission_name', required=False, default='',
+                            type=str, help='Mission name')
+        parser.add_argument('-r', '--resubmit_on_abort', type=bool,
+                            help='Resubmit mission if aborted by robot')
+        parser.add_argument('-rc', '--retry_count', required=False, default=-1,
+                            type=int, help='Number of retries to queue mission')
+        parser.add_argument('-p', '--plc_register', type=int,
+                            help='PLC register number')
         parser.add_argument('-st', '--start_time',
                             help='Start time from now in secs, default: 0',
                             type=int, default=0)
@@ -115,6 +127,26 @@ class TaskRequester(Node):
                     "category": "sequence",
                     "description": {"activities": go_to_place_activity
             }}})
+            # Configure wait_until description
+            signal_type = self.args.signal_type
+            signal_config = {}
+            match signal_type:
+                case "mission":
+                    if self.args.mission != '':
+                        signal_config['mission_name'] = self.args.mission_name
+                    if self.args.resubmit_on_abort is not None:
+                        signal_config['resubmit_on_abort'] = self.args.resubmit_on_abort
+                    if self.args.retry_count > -1:
+                        signal_config['retry_count'] = self.args.retry_count
+                case "plc":
+                    if self.args.plc_register is not None:
+                        signal_config['register'] = self.args.plc_register
+                case "custom":
+                    pass
+                case _:
+                    raise ValueError(
+                        f'Invalid move off signal type provided!'
+                    )
             # Add wait activity
             wait_activity = [{
                 "category": "perform_action",
@@ -122,8 +154,15 @@ class TaskRequester(Node):
                     "unix_millis_action_duration_estimate": 60000,
                     "category": 'wait_until',
                     "description": {
-                        "timeout": self.args.timeout
+                        "timeout": self.args.timeout,  # seconds
+                        "update_gap": self.args.update_gap, # seconds,
+                        "signal_type": signal_type,
+                        "signal_config": signal_config
             }}}]
+            if self.args.timeout is not None:
+                wait_activity[0]['description']['description']['timeout'] = self.args.timeout
+            if self.args.update_gap is not None:
+                wait_activity[0]['description']['description']['update_gap'] = self.args.update_gap
             description["phases"].append({
                 "activity": {
                     "category": "sequence",

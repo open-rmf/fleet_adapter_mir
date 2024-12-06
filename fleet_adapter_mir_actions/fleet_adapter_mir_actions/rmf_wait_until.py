@@ -24,7 +24,7 @@ from fleet_adapter_mir.mir_api import MirAPI, MirStatus, MiRStateCode
 
 class ActionFactory(MirActionFactory):
     def __init__(self, context: ActionContext):
-        MirActionFactory.__init__(context)
+        MirActionFactory.__init__(self, context)
         self.move_off = None
         # Raise error if config file is invalid
         if 'signal_type' in context.action_config:
@@ -36,8 +36,21 @@ class ActionFactory(MirActionFactory):
                         f'for signal type [mission], but mission name is not '
                         f'provided in the action config! Unable to '
                         f'instantiate an ActionFactory.')
+                if 'retry_count' in signal_type['mission']:
+                    if signal_type['mission']['retry_count'] < 0:
+                        raise ValueError(
+                            f'WaitUntil MirAction takes in a retry count for '
+                            f'signal type [mission], but retry count provided '
+                            f'is invalid! Unable to instantiate an '
+                            f'ActionFactory.')
             if 'plc' in signal_type:
-                if not isinstance(signal_type['plc'], int):
+                if 'register' not in signal_type['plc']:
+                    raise KeyError(
+                        f'WaitUntil MirAction requires a default PLC register '
+                        f'for signal type [plc], but no PLC register was '
+                        f'provided in the action config! Unable to '
+                        f'instantiate an ActionFactory.')
+                elif not isinstance(signal_type['plc']['register'], int):
                     raise TypeError(
                         f'WaitUntil MirAction requires a default PLC register '
                         f'number for signal type [plc], but the value '
@@ -61,6 +74,27 @@ class ActionFactory(MirActionFactory):
                         f'WaitUntil ActionFactory will be instantiated '
                         f'without supporting any user-defined signal module.'
                     )
+            supported_signal_types = {'mission', 'plc', 'custom'}
+            if 'default' not in signal_type:
+                self.context.node.get_logger().warn(
+                    f'WaitUntil ActionFactory instantiated for robot '
+                    f'[{self.context.name}], but no default signal type has '
+                    f'been provided in the action config! If no signal type '
+                    f'is populated in the task description, there will be no '
+                    f'move off signal available and the robot will wait for '
+                    f'the full duration of the timeout when this action is '
+                    f'triggered.'
+                )
+            elif signal_type['default'] not in supported_signal_types:
+                raise ValueError(
+                    f'User provided a default signal type in the action '
+                    f'config for WaitUntil MirAction, but the default signal '
+                    f'type is not supported!')
+            elif signal_type['default'] not in signal_type:
+                raise ValueError(
+                    f'User provided a default signal type in the action '
+                    f'config for WaitUntil MirAction, but the default signal '
+                    f'type is not configured!')
         else:
             # If the user did not provide any default signal config, log a
             # warning to remind users to provide signal type config in any task
@@ -117,13 +151,11 @@ class WaitUntil(MirAction):
             )
             return
 
-        self.logging_gap = \
-            context.action_config.get('logging_gap', 60)  # seconds
-        if description.get('logging_gap') is not None:
-            self.logging_gap = description['logging_gap']
-        self.wait_timeout = context.action_config.get('timeout', 60)  # seconds
-        if description.get('timeout') is not None:
-            self.wait_timeout = description['timeout']
+        self.update_gap = description.get(
+            'update_gap', context.action_config.get('update_gap', 60))  # seconds
+        self.wait_timeout = description.get(
+            'timeout', context.action_config.get('timeout', 60))  # seconds
+        self.signal_config = context.action_config.get('signal_type')
 
         self.start_time = self.context.node.get_clock().now().nanoseconds / 1e9
         self.context.node.get_logger().info(
@@ -166,7 +198,7 @@ class WaitUntil(MirAction):
 
         # Log the robot waiting every X seconds
         seconds_passed = round(now - self.start_time)
-        if seconds_passed%self.logging_gap == 0:
+        if seconds_passed%self.update_gap == 0:
             self.context.node.get_logger().info(
                 f'{seconds_passed} seconds have passed since robot '
                 f'[{self.context.name}] started its waiting action.'
@@ -176,14 +208,15 @@ class WaitUntil(MirAction):
 
     def create_move_off_cb(self, description: dict, move_off):
         signal_cb = None
+        signal_type = None
 
         # Determine which move off signal config to use. Any config populated
         # in the task description overrides the default config provided in
         # action config.
         if 'signal_type' in description:
             signal_type = description['signal_type']
-        elif 'signal_type' in self.context.action_config:
-            signal_type = self.context.action_config['signal_type']
+        elif self.signal_config is not None and 'default' in self.signal_config:
+            signal_type = self.signal_config['default']
         else:
             # There is no move off signal provided, we will just wait for the
             # duration of the configured timeout
@@ -196,25 +229,31 @@ class WaitUntil(MirAction):
             signal_cb = lambda: False
             return signal_cb
 
+        default_config = self.signal_config.get(signal_type)
+        task_config = description.get('signal_config')
         # Configure the specified move off signal
         match signal_type:
             case "mission":
-                mission_config = self.context.action_config.get('mission')
-                mission_name = description.get('mission_name', None)
-                resubmit_on_abort = description.get('resubmit_on_abort', None)
-                retry_count = description.get('retry_count', None)
+                mission_name = None
+                resubmit_on_abort = False
+                retry_count = 10
 
-                # Check for default mission config values if they are not
-                # provided in the task description
-                if mission_config is not None:
-                    if mission_name is None:
-                        mission_name = mission_config['mission_name']
-                    if resubmit_on_abort is None:
-                        resubmit_on_abort = \
-                            mission_config.get('resubmit_on_abort', False)
-                    if retry_count is None:
-                        retry_count = \
-                            mission_config.get('retry_count', 10)
+                # Check for default mission config values
+                if default_config is not None:
+                    mission_name = default_config['mission_name']
+                    if 'resubmit_on_abort' in default_config:
+                        resubmit_on_abort = default_config['resubmit_on_abort']
+                    if 'retry_count' in default_config:
+                        retry_count = default_config['retry_count']
+
+                # Override default values with task config only if provided
+                if task_config is not None:
+                    if 'mission_name' in task_config:
+                        mission_name = task_config['mission_name']
+                    if 'resubmit_on_abort' in task_config:
+                        resubmit_on_abort = task_config['resubmit_on_abort']
+                    if 'retry_count' in task_config:
+                        retry_count = task_config['retry_count']
 
                 # Check if mission config values are valid
                 if mission_name is None:
@@ -242,9 +281,9 @@ class WaitUntil(MirAction):
                     )
                     return None
                 # Queue the waiting mission for this robot
-                count = 0
+                count = 0  # we should attempt (retry_count + 1) times in total
                 mission_queue_id = None
-                while count < retry_count and not mission_queue_id:
+                while count <= retry_count and not mission_queue_id:
                     count += 1
                     self.context.node.get_logger().info(
                         f'Queueing mission {mission_name} for robot '
@@ -279,14 +318,30 @@ class WaitUntil(MirAction):
                     f'mission queue id {mission_queue_id} is completed.'
                 )
             case "plc":
-                register = description.get(
-                    'plc', self.context.action_config.get('plc', None))
+                register = None
+                # Check for default plc config values
+                if default_config is not None:
+                    register = default_config['register']
+                # Override default values with task config only if provided
+                if task_config is not None:
+                    if 'register' in task_config:
+                        register = task_config['register']
+
                 if register is None:
                     self.context.node.get_logger().info(
                         f'MoveOff signal type [plc] was selected for '
-                        f'robot [{self.context.name}], but no plc register '
+                        f'robot [{self.context.name}], but no PLC register '
                         f'was provided! Please ensure that the required '
                         f'fields are provided in the fleet config.'
+                    )
+                    return None
+                elif not isinstance(register, int):
+                    self.context.node.get_logger().info(
+                        f'MoveOff signal type [plc] was selected for '
+                        f'robot [{self.context.name}], but a non-integer PLC '
+                        f'register number was provided! Please ensure that '
+                        f'the correct data type is provided in the fleet '
+                        f'config/task description.'
                     )
                     return None
                 signal_cb = lambda: self.check_plc_register(register)
@@ -370,7 +425,7 @@ class WaitUntil(MirAction):
         return False
 
     def check_plc_register(self, register: int):
-        # Update register to check if PLC register returns True
+        # Update register to check if PLC register returns a non-zero value
         value = self.register_get(register)
         if value:
             self.context.node.get_logger().info(
@@ -384,7 +439,7 @@ class WaitUntil(MirAction):
     # HELPFUL FUNCTIONS FOR INTERACTING WITH MIR REST API
     # --------------------------------------------------------------------------
 
-    def register_get(self, register: int):
+    def register_get(self, register: int) -> int:
         if not self.context.api.connected:
             return None
         try:
@@ -394,8 +449,17 @@ class WaitUntil(MirAction):
                 timeout=self.context.api.timeout)
             if self.context.api.debug:
                 print(f"Response: {response.headers}")
-            # Response value is string, return integer of value
-            return int(response.json().get('value', 0))
+            value = response.json().get('value', 0)
+            # Convert value into int if required
+            if isinstance(value, str):
+                try:
+                    return int(value)
+                except ValueError as value_err:
+                    print(f"Value error: {value_err}")
+                    return None
+            elif isinstance(value, int):
+                return value
+            return None
         except HTTPError as http_err:
             print(f"HTTP error: {http_err}")
             return None

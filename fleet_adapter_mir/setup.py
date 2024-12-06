@@ -21,10 +21,7 @@ setup(
         'console_scripts': [
             'fleet_adapter_mir=fleet_adapter_mir.fleet_adapter_mir:main',
             'rmf_cart_delivery=fleet_adapter_mir.rmf_cart_delivery:CartDelivery',
-            'rmf_cart_detection=fleet_adapter_mir.rmf_cart_detection:CartDetection',
             'rmf_wait_until=fleet_adapter_mir.rmf_wait_until:WaitUntil',
-            'rmf_move_off=fleet_adapter_mir.rmf_move_off:BaseMoveOff',
-            'rmf_move_off_on_alert=fleet_adapter_mir.rmf_move_off_on_alert:MoveOff',
         ],
     },
 )
