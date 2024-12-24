@@ -61,7 +61,7 @@ ros2 run fleet_adapter_mir_tasks dispatch_delivery -g go_to_waypoint -p pickup_l
 
 ### Overview
 
-The `rmf_wait_until` plugin introduces the `wait_until` action. It allows users to command robots to wait at a specified location until it receives a move off signal or until a configured timeout. The robot would then be free to move on to carry out the remainder of its task, or complete the task and proceed to its idle behavior. During this waiting period, the user may command the robot to perform missions or any customized behavior with user-defined move off signals to trigger completion.
+The `rmf_wait_until` plugin introduces the `wait_until` action. It allows users to command a robot to wait at a specified location until it receives a move off signal or until a configured timeout. The robot would then be free to move on to carry out the remainder of its task, or complete the task and proceed to its idle behavior. During this waiting period, the user may command the robot to perform missions or any customized behavior with user-defined move off signals to trigger completion.
 
 This action can come in handy for various use cases, for example:
 - The robot has to perform a delivery where it travels between pick up and drop off locations, and wait at each location for an external device to load or unload items on itself.
@@ -112,20 +112,20 @@ Steps for setup:
 
 To submit a multi-stop waiting task, you may use the `dispatch_multistop` task script found in the `fleet_adapter_mir_tasks` package:
 ```bash
-# Trigger a task using the default mission signal type
-ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -t 1800 -s mission
+# Trigger a task using the default mission signal type and a timeout of 120 seconds
+ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -t 120 -s mission
 
 # Trigger a task using the mission signal type with a specific mission
-ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -t 1800 -s mission -m some_mission_name
+ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -s mission -m some_mission_name
 
 # Trigger a task using the default PLC signal type
-ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -t 1800 -s plc
+ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -s plc
 
 # Trigger a task using the PLC signal type with a specific PLC register
-ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -t 1800 -s plc -p 30
+ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -s plc -p 30
 
 # Trigger a task using the custom signal type
-ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -t 1800 -s custom
+ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -s custom
 ```
 - `-g`: Takes in the waypoints the robots should travel to for each waiting action.
 - `-t`: Optional timeout of the action in seconds. Default to 60 seconds.

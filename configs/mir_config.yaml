@@ -114,7 +114,7 @@ plugins:
   rmf_wait_until:
     module: "fleet_adapter_mir_actions.rmf_wait_until"
     actions: ["wait_until"]
-    timeout: 1800 # Optional, in seconds. Timeout if there is no move-off signal received, after which robot will move off regardless. Default to 60 seconds.
+    timeout: 60 # Optional, in seconds. Timeout if there is no move-off signal received, after which robot will move off regardless. Default to 60 seconds.
     update_gap: 30 # Optional, in seconds. The fleet adapter will log an update using this interval. Default to 30 seconds.
     signal_type: # Defines the default configs for various move off signal types. If this field is not provided, the robot will wait the full duration of the default timeout. Signal configs can be overridden by task description.
       # Currently three signal types are supported: [mission, plc, custom].

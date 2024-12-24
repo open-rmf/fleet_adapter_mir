@@ -19,7 +19,6 @@ from urllib.error import HTTPError
 
 from fleet_adapter_mir_actions.mir_action import MirAction, MirActionFactory
 from fleet_adapter_mir.robot_adapter_mir import ActionContext
-from fleet_adapter_mir.mir_api import MirAPI, MirStatus, MiRStateCode
 
 
 class ActionFactory(MirActionFactory):
@@ -44,18 +43,19 @@ class ActionFactory(MirActionFactory):
                             f'is invalid! Unable to instantiate an '
                             f'ActionFactory.')
             if 'plc' in signal_type:
-                if 'register' not in signal_type['plc']:
+                plc_register = signal_type['plc'].get('register')
+                if plc_register is None:
                     raise KeyError(
                         f'WaitUntil MirAction requires a default PLC register '
                         f'for signal type [plc], but no PLC register was '
                         f'provided in the action config! Unable to '
                         f'instantiate an ActionFactory.')
-                elif not isinstance(signal_type['plc']['register'], int):
+                elif not isinstance(plc_register, int):
                     raise TypeError(
                         f'WaitUntil MirAction requires a default PLC register '
                         f'number for signal type [plc], but the value '
-                        f'provided is not an integer! Unable to instantiate '
-                        f'an ActionFactory.')
+                        f'provided [{plc_register}] is not an integer! '
+                        f'Unable to instantiate an ActionFactory.')
             # If user provides a custom MoveOff module, import it
             if 'custom' in signal_type:
                 if 'module' not in signal_type['custom']:
@@ -75,7 +75,8 @@ class ActionFactory(MirActionFactory):
                         f'without supporting any user-defined signal module.'
                     )
             supported_signal_types = {'mission', 'plc', 'custom'}
-            if 'default' not in signal_type:
+            default_signal = signal_type.get('default')
+            if default_signal is None:
                 self.context.node.get_logger().warn(
                     f'WaitUntil ActionFactory instantiated for robot '
                     f'[{self.context.name}], but no default signal type has '
@@ -85,16 +86,16 @@ class ActionFactory(MirActionFactory):
                     f'the full duration of the timeout when this action is '
                     f'triggered.'
                 )
-            elif signal_type['default'] not in supported_signal_types:
+            elif default_signal not in supported_signal_types:
                 raise ValueError(
-                    f'User provided a default signal type in the action '
-                    f'config for WaitUntil MirAction, but the default signal '
-                    f'type is not supported!')
-            elif signal_type['default'] not in signal_type:
+                    f'User provided a default signal type {default_signal} '
+                    f'in the action config for WaitUntil MirAction, but the '
+                    f'default signal type is not supported!')
+            elif default_signal not in signal_type:
                 raise ValueError(
-                    f'User provided a default signal type in the action '
-                    f'config for WaitUntil MirAction, but the default signal '
-                    f'type is not configured!')
+                    f'User provided a default signal type {default_signal} '
+                    f'in the action config for WaitUntil MirAction, but the '
+                    f'default signal type is not configured!')
         else:
             # If the user did not provide any default signal config, log a
             # warning to remind users to provide signal type config in any task

@@ -105,7 +105,6 @@ class TaskRequester(Node):
         now.sec = now.sec + self.args.start_time
         start_time = now.sec * 1000 + round(now.nanosec/10**6)
         request["unix_millis_earliest_start_time"] = start_time
-        # todo(YV): Fill priority after schema is added
 
         # Define task request category
         request["category"] = "compose"
@@ -116,8 +115,7 @@ class TaskRequester(Node):
         description["phases"] = []
 
         # GoToPlace + wait
-        for i in range(len(self.args.go_to)):
-            place = self.args.go_to[i]
+        for place in self.args.go_to:
             # Add GoToPlace activity
             go_to_place_activity = [{
                 "category": "go_to_place",
@@ -157,8 +155,6 @@ class TaskRequester(Node):
                     "unix_millis_action_duration_estimate": 60000,
                     "category": 'wait_until',
                     "description": {
-                        "timeout": self.args.timeout,  # seconds
-                        "update_gap": self.args.update_gap,  # seconds,
                         "signal_type": signal_type,
                         "signal_config": signal_config
                     }
