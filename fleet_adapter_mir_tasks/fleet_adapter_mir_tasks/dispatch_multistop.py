@@ -52,8 +52,8 @@ class TaskRequester(Node):
                             help='Number of seconds between logging updates')
         parser.add_argument('-s', '--signal_type', required=True,
                             type=str, help='Move off signal type')
-        parser.add_argument('-m', '--mission_name', required=False, default='',
-                            type=str, help='Mission name')
+        parser.add_argument('-m', '--mission_name', type=str,
+                            help='Mission name')
         parser.add_argument('-r', '--resubmit_on_abort', type=bool,
                             help='Resubmit mission if aborted by robot')
         parser.add_argument('-rc', '--retry_count', required=False, default=-1,
@@ -132,22 +132,34 @@ class TaskRequester(Node):
             signal_config = {}
             match signal_type:
                 case "mission":
-                    if self.args.mission != '':
-                        signal_config['mission_name'] = self.args.mission_name
+                    if self.args.mission_name is None:
+                        raise ValueError(
+                            f'No mission name provided for [mission] signal '
+                            f'type!'
+                        )
+                    signal_config['mission_name'] = self.args.mission_name
                     if self.args.resubmit_on_abort is not None:
                         signal_config['resubmit_on_abort'] = \
                             self.args.resubmit_on_abort
                     if self.args.retry_count > -1:
                         signal_config['retry_count'] = self.args.retry_count
                 case "plc":
-                    if self.args.plc_register is not None:
-                        signal_config['register'] = self.args.plc_register
+                    if self.args.plc_register is None:
+                        raise ValueError(
+                            f'No PLC register provided for [plc] signal type!'
+                        )
+                    signal_config['register'] = self.args.plc_register
                 case "custom":
-                    pass
-                case _:
                     raise ValueError(
-                        f'Invalid move off signal type provided!'
+                        f'[custom] signal type is not supported via task '
+                        f'description! Please provide the path to module in '
+                        f'the fleet action config.'
                     )
+                case _:
+                    # The signal type provided, if valid, points to a
+                    # configured signal type. We pass it to the action for
+                    # validation.
+                    pass
             # Add wait activity
             wait_activity = [{
                 "category": "perform_action",
