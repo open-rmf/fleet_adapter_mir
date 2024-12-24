@@ -80,29 +80,29 @@ This plugin currently supports three move off signal types:
 3. Move off on a user-defined signal.
    - Users can customize their own signal type by implementing a `MoveOff` module.
 
-The plugin also supports task-specific move off signals, such that different signal types can be used for different tasks or task phases. Users can specify signal types in the task description, which will override the default signal type provided in the plugin config. If additional config is missing in the task description, the fleet adapter will refer to default values from the plugin config (if provided).
-
-It is possible to submit tasks with move off signals that have not been configured in the plugin config. However, it is up to the user to ensure that these signal types are valid and compatible with the MiR.
+The plugin also supports task-specific move off signals, such that users can trigger different move off signals in each task. These move off signals are either pre-defined in the plugin config, or configured in the task description (with the exception of `custom` signals). It is up to the user to ensure that these signal types are valid and compatible with the MiR.
 
 You may refer to the Examples section below to get a clearer idea of how to customize signal types with plugin config and task descriptions.
 
 ### Setup
 
-Users can configure multiple move off signals for their robot fleet in the fleet's plugin config, up to one of each supported signal type. If the task description does not provide sufficient information to configure a signal type, the fleet adapter will refer to the plugin config. This is suitable for users who only require a single signal type for their tasks. If signal types are not configured in the plugin config nor the task description, the robot will not have a move off signal set up, and simply wait for the full duration of the timeout during the action.
+Users can configure multiple move off signals for their robot fleet in the fleet's plugin config, as long as they are supported by the WaitUntil action. If signal types are not configured in the plugin config nor the task description, the robot will not have a move off signal set up, and simply wait for the full duration of the timeout during the action.
 
 Steps for setup:
 
 1. Fill in the appropriate fields under the `rmf_wait_until` plugin in the fleet config, with reference to the example provided in `mir_config.yaml`. It allows users to customize the behavior of their robots during the waiting action and the type of signal to trigger move off.
    - `timeout`: Optional, the default timeout of the waiting action. At timeout, the robot will move off even if it did not receive the move off signal. If not specified, the timeout will default to 60 seconds. This value can be overridden by the task description.
    - `update_gap`: Optional, the update interval for logging purposes. If not specified, the update gap will default to 30 seconds. This value can be overridden by the task description.
-   - `signal_type`: The type of move off signal for the robot. We currently support `mission`, `plc` and `custom`. You may configure default values for each supported signal type. These values act as default configuration to be used for the action. They may be overridden by the task description, with the exception of `custom` signals. This enables users to trigger different types of move off signals at runtime for the same robot fleet by submitting different task descriptions.
-      - For the `mission` signal type, users will have to provide the following fields:
-         - `mission_name` is required for the robot to trigger the relevant MiR mission when the waiting action starts. This is a compulsory field and may be overridden by the task description.
-         - `retry_count` is an integer and an optional field, used to configure the number of times the fleet adapter should re-attempt posting a mission at the start of the waiting action. If the mission cannot be successfully queued on the robot beyond the number of retries, the task will be cancelled. This value can be overridden by the task description.
-         - `resubmit_on_abort` is a boolean and an optional field, used to configure the action behavior in cases where the MiR mission cannot be successfully completed and gets aborted by the robot. When set to `True`, the fleet adapter will submit the same MiR mission to the robot if the previous attempt has been aborted. The move off signal will come only when the mission has been successfully completed. If set to `False`, the fleet adapter will treat aborted missions as completed and end the waiting action. This value can be overridden by the task description.
-      - For the `plc` signal type, users will need to provide the relevant PLC register number. This register number should be an integer and available on the MiR. This value can be overridden by the task description.
-      - For the `custom` signal type, users will need to fill in the path to their custom `MoveOff` module that is implemented from the `BaseMoveOff` abstract class provided.
-      - The `default` field is optional but encouraged to be added. It should point to any one of the configured signal types. If no signal type is provided in the task description, the fleet adapter will select the `default` signal type from the plugin config as the move off trigger. If neither is provided, the robot will simply wait for the full duration of the timeout since it does not have a move off signal configured.
+   - `signals`: List the signals to be preconfigured for the fleet. We currently support `mission`, `plc` and `custom` signal types. These signals can be triggered when specified in the task description.
+      - Provide a unique name for each of your signal, with a mandatory field `signal_type`. Refer to `mir_config.yaml` for examples for each supported type.
+      - The following elaborates on each supported type and their respective config:
+         - For the `mission` signal type, users will have to provide the following fields:
+            - `mission_name` is required for the robot to trigger the relevant MiR mission when the waiting action starts. This is a compulsory field and may be overridden by the task description.
+            - `retry_count` is an integer and an optional field, used to configure the number of times the fleet adapter should re-attempt posting a mission at the start of the waiting action. If the mission cannot be successfully queued on the robot beyond the number of retries, the task will be cancelled. This value can be overridden by the task description.
+            - `resubmit_on_abort` is a boolean and an optional field, used to configure the action behavior in cases where the MiR mission cannot be successfully completed and gets aborted by the robot. When set to `True`, the fleet adapter will submit the same MiR mission to the robot if the previous attempt has been aborted. The move off signal will come only when the mission has been successfully completed. If set to `False`, the fleet adapter will treat aborted missions as completed and end the waiting action. This value can be overridden by the task description.
+         - For the `plc` signal type, users will need to provide the relevant PLC register number. This register number should be an integer and available on the MiR. This value can be overridden by the task description.
+         - For the `custom` signal type, users will need to fill in the path to their custom `MoveOff` module that is implemented from the `BaseMoveOff` abstract class provided.
+   - The `default_signal` field is optional but encouraged to be added. It should point to any one of the configured signals. If no signal is provided in the task description, the fleet adapter will select the default signal from the plugin config as the move off trigger. If neither is provided, the robot will simply wait for the full duration of the timeout since it does not have a move off signal configured.
 2. [Optional] Create your own `MoveOff` plugin.
    - You are encouraged to use the `BaseMoveOff` class in `rmf_move_off.py` as a base for your own module implementation. The class methods will be used by the `WaitUntil` Mir Action.
    - In the plugin config, update the `custom` field to point to your own written module.
@@ -112,25 +112,22 @@ Steps for setup:
 
 To submit a multi-stop waiting task, you may use the `dispatch_multistop` task script found in the `fleet_adapter_mir_tasks` package:
 ```bash
-# Trigger a task using the default mission signal type and a timeout of 120 seconds
-ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -t 120 -s mission
+# Trigger a task with a configured signal custom_2
+ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -s custom_2
 
-# Trigger a task using the mission signal type with a specific mission
-ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -s mission -m some_mission_name
+# Trigger a task with a new mission signal and a timeout of 120 seconds
+ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -t 120 -s mission -m some_mission_name
 
-# Trigger a task using the default PLC signal type
-ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -s plc
-
-# Trigger a task using the PLC signal type with a specific PLC register
+# Trigger a task with a new PLC signal
 ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -s plc -p 30
 
-# Trigger a task using the custom signal type
-ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3 -s custom
+# Trigger the default signal configured in plugin config
+ros2 run fleet_adapter_mir_tasks dispatch_multistop -g waypoint_1 waypoint_2 waypoint_3
 ```
 - `-g`: Takes in the waypoints the robots should travel to for each waiting action.
 - `-t`: Optional timeout of the action in seconds. Default to 60 seconds.
 - `-u`: Optional update gap of the action in seconds. Default to 30 seconds.
-- `-s`: Signal type for this `wait_until` action, currently support options are `mission`, `plc` and `custom`.
+- `-s`: Signal/signal type for this `wait_until` action, currently supported options are `mission`, `plc`, and any of the pre-configured signals.
 - `-m`: Further specifies the mission name for signal type `mission`.
 - `-r`: A boolean determining whether to resubmit missions if they are aborted by the robot. Used for signal type `mission`.
 - `-rc`: An integer indicating the number of times to reattempt queueing a mission. Used for signal type `mission`.
@@ -141,7 +138,7 @@ Do note that this task involves using the same move off signal for every waypoin
 ### Examples
 
 <details>
-<summary>Example 1: Overriding specific fields from plugin config using task description</summary>
+<summary>Example 1: Select a configured signal</summary>
 
 ![wait_until_example_A](../_images/docs/wait_until_task_A.png)
 </details>
@@ -153,7 +150,7 @@ Do note that this task involves using the same move off signal for every waypoin
 </details>
 
 <details>
-<summary>Example 3: Use WaitUntil's default timeout and select a configured signal type using task description</summary>
+<summary>Example 3: Use the pre-configured default signal</summary>
 
 ![wait_until_example_C](../_images/docs/wait_until_task_C.png)
 </details>

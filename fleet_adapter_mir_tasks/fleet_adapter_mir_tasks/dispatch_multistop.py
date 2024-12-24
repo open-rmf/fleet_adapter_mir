@@ -50,8 +50,8 @@ class TaskRequester(Node):
                             help='Number of seconds to timeout')
         parser.add_argument('-u', '--update_gap', type=int,
                             help='Number of seconds between logging updates')
-        parser.add_argument('-s', '--signal_type', required=True,
-                            type=str, help='Move off signal type')
+        parser.add_argument('-s', '--signal_type', type=str,
+                            help='Move off signal type')
         parser.add_argument('-m', '--mission_name', type=str,
                             help='Mission name')
         parser.add_argument('-r', '--resubmit_on_abort', type=bool,
@@ -167,11 +167,16 @@ class TaskRequester(Node):
                     "unix_millis_action_duration_estimate": 60000,
                     "category": 'wait_until',
                     "description": {
-                        "signal_type": signal_type,
                         "signal_config": signal_config
                     }
                 }
             }]
+            # We only add in these parameters if they are specified and valid
+            # The perform action plugin will use the default values if these
+            # are not provided
+            if signal_type is not None:
+                wait_activity[0]['description']['description']['signal_type'] = \
+                    signal_type
             if self.args.timeout is not None:
                 wait_activity[0]['description']['description']['timeout'] = \
                     self.args.timeout
