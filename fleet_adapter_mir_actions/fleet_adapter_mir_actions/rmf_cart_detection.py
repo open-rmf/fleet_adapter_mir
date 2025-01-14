@@ -73,9 +73,7 @@ class BaseCartDetection(ABC):
             self.context.node.get_logger().debug(f'HTTP error: {http_err}')
             return None
         except Exception as err:
-            self.context.node.get_logger().debug(
-                f'Other error: {err}'
-            )
+            self.context.node.get_logger().debug(f'Other error: {err}')
             return None
 
     def io_module_guid_status_get(self, io_guid: str):
