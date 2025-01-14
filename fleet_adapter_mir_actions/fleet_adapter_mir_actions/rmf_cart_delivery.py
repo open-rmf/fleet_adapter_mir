@@ -127,6 +127,10 @@ class ActionFactory(MirActionFactory):
             case 'delivery_dropoff':
                 return CartDropoff(
                     description, execution, self.context, self.cart_detection)
+        raise ValueError(
+            f'Action [{category}] has been called for rmf_cart_delivery, '
+            f'but it is not a supported action!'
+        )
 
 
 class CartPickup(MirAction):

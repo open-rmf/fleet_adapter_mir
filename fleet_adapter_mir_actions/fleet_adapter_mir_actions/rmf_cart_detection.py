@@ -64,14 +64,18 @@ class BaseCartDetection(ABC):
                 headers=self.context.api.headers,
                 timeout=self.context.api.timeout)
             if self.context.api.debug:
-                print(f"Response: {response.headers}")
+                self.context.node.get_logger().debug(
+                    f'Response: {response.headers}'
+                )
             # Response value is string, return integer of value
             return int(response.json().get('value', 0))
         except HTTPError as http_err:
-            print(f"HTTP error: {http_err}")
+            self.context.node.get_logger().debug(f'HTTP error: {http_err}')
             return None
         except Exception as err:
-            print(f"Other  error: {err}")
+            self.context.node.get_logger().debug(
+                f'Other error: {err}'
+            )
             return None
 
     def io_module_guid_status_get(self, io_guid: str):
@@ -85,15 +89,17 @@ class BaseCartDetection(ABC):
                 headers=self.context.api.headers,
                 timeout=self.context.api.timeout)
             if self.context.api.debug:
-                print(f"Response: {response.headers}")
+                self.context.node.get_logger().debug(
+                    f'Response: {response.headers}'
+                )
             if 'input_state' not in response.json():
                 return None
             return response.json()['input_state']
         except HTTPError as http_err:
-            print(f"HTTP error: {http_err}")
+            self.context.node.get_logger().debug(f'HTTP error: {http_err}')
             return None
         except Exception as err:
-            print(f"Other  error: {err}")
+            self.context.node.get_logger().debug(f'Other error: {err}')
             return None
 
     def io_modules_get(self):
@@ -105,12 +111,14 @@ class BaseCartDetection(ABC):
                 headers=self.context.api.headers,
                 timeout=self.context.api.timeout)
             if self.context.api.debug:
-                print(f"Response: {response.headers}")
+                self.context.node.get_logger().debug(
+                    f'Response: {response.headers}'
+                )
             # Response value is string, return integer of value
             return response.json()
         except HTTPError as http_err:
-            print(f"HTTP error: {http_err}")
+            self.context.node.get_logger().debug(f'HTTP error: {http_err}')
             return None
         except Exception as err:
-            print(f"Other  error: {err}")
+            self.context.node.get_logger().debug(f'Other error: {err}')
             return None

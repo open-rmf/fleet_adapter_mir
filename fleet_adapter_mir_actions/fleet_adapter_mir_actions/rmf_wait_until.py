@@ -28,40 +28,7 @@ class ActionFactory(MirActionFactory):
         # Raise error if config file is invalid
         supported_signal_types = {'mission', 'plc', 'custom'}
         signals = context.action_config.get('signals')
-        if signals is not None:
-            for signal_name, signal_config in signals.items():
-                signal_type = signal_config.get('signal_type')
-                if signal_type is None:
-                    raise KeyError(
-                        f'WaitUntil MirAction signal config requires a '
-                        f'defined signal_type, but signal_type is not '
-                        f'provided for {signal_name}! Unable to instantiate '
-                        f'WaitUntil MirActionFactory.'
-                    )
-                elif signal_type not in supported_signal_types:
-                    raise ValueError(
-                        f'WaitUntil MirAction signal config requires a '
-                        f'defined signal_type, but signal_type provided '
-                        f'{signal_name} is not supported! We currently '
-                        f'support the following signal types: '
-                        f'{supported_signal_types}. Unable to instantiate '
-                        f'WaitUntil MirActionFactory.'
-                    )
-
-                # Pass signal config into verify functions to validate types
-                # and catch missing values
-                match signal_type:
-                    case 'mission':
-                        self.verify_mission(
-                            signal_config.get('mission_name'),
-                            signal_config.get('retry_count'),
-                            signal_config.get('resubmit_on_abort')
-                        )
-                    case 'plc':
-                        self.verify_plc(signal_config.get('register'))
-                    case 'custom':
-                        self.verify_custom_module(signal_config.get('module'))
-        else:
+        if signals is None:
             # If the user did not provide any valid signal config, log a
             # warning to remind users to provide signal type config in any task
             # description they submit
@@ -74,20 +41,42 @@ class ActionFactory(MirActionFactory):
             )
             return
 
+        for signal_name, signal_config in signals.items():
+            signal_type = signal_config.get('signal_type')
+            if signal_type is None:
+                raise KeyError(
+                    f'WaitUntil MirAction signal config requires a '
+                    f'defined signal_type, but signal_type is not '
+                    f'provided for {signal_name}! Unable to instantiate '
+                    f'WaitUntil MirActionFactory.'
+                )
+            elif signal_type not in supported_signal_types:
+                raise ValueError(
+                    f'WaitUntil MirAction signal config requires a '
+                    f'defined signal_type, but signal_type provided '
+                    f'{signal_name} is not supported! We currently '
+                    f'support the following signal types: '
+                    f'{supported_signal_types}. Unable to instantiate '
+                    f'WaitUntil MirActionFactory.'
+                )
+
+            # Pass signal config into verify functions to validate types
+            # and catch missing values
+            match signal_type:
+                case 'mission':
+                    self.verify_mission(
+                        signal_config.get('mission_name'),
+                        signal_config.get('retry_count'),
+                        signal_config.get('resubmit_on_abort')
+                    )
+                case 'plc':
+                    self.verify_plc(signal_config.get('register'))
+                case 'custom':
+                    self.verify_custom_module(signal_config.get('module'))
+
         # Register default signal type
         default_signal = context.action_config.get('default_signal')
-        if default_signal is not None:
-            if default_signal not in supported_signal_types:
-                raise ValueError(
-                    f'User provided a default signal type {default_signal} '
-                    f'in the action config for WaitUntil MirAction, but the '
-                    f'default signal type is not supported!')
-            elif default_signal not in signals.keys():
-                raise ValueError(
-                    f'User provided a default signal type {default_signal} '
-                    f'in the action config for WaitUntil MirAction, but the '
-                    f'default signal type is not configured!')
-        else:
+        if default_signal is None:
             self.context.node.get_logger().warn(
                 f'WaitUntil ActionFactory instantiated for robot '
                 f'[{self.context.name}], but no default signal type has been '
@@ -96,13 +85,21 @@ class ActionFactory(MirActionFactory):
                 f'off signal available and the robot will wait for the full '
                 f'duration of the timeout when this action is triggered.'
             )
+            return
+
+        if default_signal not in supported_signal_types:
+            raise ValueError(
+                f'User provided a default signal type {default_signal} '
+                f'in the action config for WaitUntil MirAction, but the '
+                f'default signal type is not supported!')
+        elif default_signal not in signals.keys():
+            raise ValueError(
+                f'User provided a default signal type {default_signal} '
+                f'in the action config for WaitUntil MirAction, but the '
+                f'default signal type is not configured!')
 
     def supports_action(self, category: str) -> bool:
-        match category:
-            case 'wait_until':
-                return True
-            case _:
-                return False
+        return True if category == 'wait_until' else False
 
     def perform_action(
         self,
@@ -110,11 +107,13 @@ class ActionFactory(MirActionFactory):
         description: dict,
         execution
     ) -> MirAction:
-        match category:
-            case 'wait_until':
-                return WaitUntil(
-                    description, execution, self.context,
-                    self.custom_modules)
+        if category == 'wait_until':
+            return WaitUntil(
+                description, execution, self.context, self.custom_modules)
+        raise ValueError(
+            f'Action [{category}] has been called for rmf_wait_until, '
+            f'but it is not a supported action!'
+        )
 
     def verify_mission(
             self,
@@ -237,7 +236,7 @@ class WaitUntil(MirAction):
             self.context.node.get_logger().info(
                 f'Robot [{self.context.name}] has completed waiting for '
                 f'{self.wait_timeout} seconds without move off signal, '
-                f'action as complete.'
+                f'marking action as complete.'
             )
             return True
 
@@ -273,7 +272,6 @@ class WaitUntil(MirAction):
             )
             signal_cb = lambda: False
             return signal_cb
-
 
         signal_config = None
         if signal_type in self.signal_config:
@@ -409,26 +407,7 @@ class WaitUntil(MirAction):
 
         if (mission_status is not None and
                 mission_status['state'] == 'Aborted'):
-            if resubmit_on_abort:
-                # Mission aborted for some reason, let's submit the mission
-                # again
-                new_mission_queue_id = self.context.api.queue_mission_by_name(
-                    mission_name)
-                if not new_mission_queue_id:
-                    # If we didn't successfully post a new mission, we'll
-                    # try again in the next update_action loop
-                    return
-                # Update the check move off callback with the updated mission
-                # queue id
-                self.move_off_cb = lambda: self.check_mission_complete(
-                    mission_name,
-                    new_mission_queue_id)
-                self.context.node.get_logger().info(
-                    f'Robot [{self.context.name}] aborted mission with queue '
-                    f'id {mission_queue_id}, re-submitting mission with new '
-                    f'queue id {new_mission_queue_id}'
-                )
-            else:
+            if not resubmit_on_abort:
                 # If mission is aborted without option to resubmit on abort,
                 # mark mission as finished
                 self.context.node.get_logger().info(
@@ -437,6 +416,25 @@ class WaitUntil(MirAction):
                     f'action as completed.'
                 )
                 return True
+
+            # Mission aborted for some reason, let's submit the mission
+            # again
+            new_mission_queue_id = self.context.api.queue_mission_by_name(
+                mission_name)
+            if not new_mission_queue_id:
+                # If we didn't successfully post a new mission, we'll
+                # try again in the next update_action loop
+                return
+            # Update the check move off callback with the updated mission
+            # queue id
+            self.move_off_cb = lambda: self.check_mission_complete(
+                mission_name,
+                new_mission_queue_id)
+            self.context.node.get_logger().info(
+                f'Robot [{self.context.name}] aborted mission with queue '
+                f'id {mission_queue_id}, re-submitting mission with new '
+                f'queue id {new_mission_queue_id}'
+            )
         return False
 
     def check_plc_register(self, register: int):
@@ -463,21 +461,25 @@ class WaitUntil(MirAction):
                 headers=self.context.api.headers,
                 timeout=self.context.api.timeout)
             if self.context.api.debug:
-                print(f"Response: {response.headers}")
+                self.context.node.get_logger().debug(
+                    f'Response: {response.headers}'
+                )
             value = response.json().get('value', 0)
             # Convert value into int if required
             if isinstance(value, str):
                 try:
                     return int(value)
                 except ValueError as value_err:
-                    print(f"Value error: {value_err}")
+                    self.context.node.get_logger().debug(
+                        f'Value error: {value_err}'
+                    )
                     return None
             elif isinstance(value, int):
                 return value
             return None
         except HTTPError as http_err:
-            print(f"HTTP error: {http_err}")
+            self.context.node.get_logger().debug(f'HTTP error: {http_err}')
             return None
         except Exception as err:
-            print(f"Other  error: {err}")
+            self.context.node.get_logger().debug(f'Other  error: {err}')
             return None
