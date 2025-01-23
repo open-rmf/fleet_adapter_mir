@@ -195,7 +195,7 @@ class WaitUntil(MirAction):
         self.wait_timeout = description.get(
             'default_timeout',
             context.action_config.get('default_timeout', 60))  # seconds
-        self.signal_config = context.action_config.get('signals')
+        self.configured_signals = context.action_config.get('signals')
         self.default_signal = context.action_config.get('default_signal')
 
         self.start_time = self.context.node.get_clock().now().nanoseconds / 1e9
@@ -259,14 +259,14 @@ class WaitUntil(MirAction):
         # action config.
         if 'signal_name' in description:
             signal_name = description['signal_name']
-            if signal_name in self.signal_config:
-                signal_config = self.signal_config[signal_name]
+            if signal_name in self.configured_signals:
+                signal_config = self.configured_signals[signal_name]
                 signal_type = signal_config['signal_type']
         elif 'signal_type' in description and 'signal_config' in description:
             signal_config = description['signal_config']
             signal_type = description['signal_type']
         elif self.default_signal is not None:
-            signal_config = self.signal_config[self.default_signal]
+            signal_config = self.configured_signals[self.default_signal]
             signal_type = signal_config['signal_type']
         else:
             # There is no move off signal provided, we will just wait for the
