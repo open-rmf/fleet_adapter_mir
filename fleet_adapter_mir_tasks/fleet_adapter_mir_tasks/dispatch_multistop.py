@@ -46,10 +46,12 @@ class TaskRequester(Node):
         parser.add_argument('-g', '--go_to', required=True, nargs='+',
                             type=str,
                             help='Places to go to for multistop task')
-        parser.add_argument('-t', '--timeout', type=int,
-                            help='Number of seconds to timeout')
+        parser.add_argument('-t', '--default_timeout', type=int,
+                            help='Number of seconds to default timeout')
         parser.add_argument('-u', '--update_gap', type=int,
                             help='Number of seconds between logging updates')
+        parser.add_argument('-s', '--signal_name', type=str,
+                            help='Preconfigured move off signal name')
         parser.add_argument('-s', '--signal_type', type=str,
                             help='Move off signal type')
         parser.add_argument('-m', '--mission_name', type=str,
@@ -127,62 +129,65 @@ class TaskRequester(Node):
                     "description": {"activities": go_to_place_activity}
                 }
             })
-            # Configure wait_until description
-            signal_type = self.args.signal_type
-            signal_config = {}
-            match signal_type:
-                case "mission":
-                    if self.args.mission_name is None:
+            # Configure wait until description
+            wait_until_description = {}
+            if self.args.signal_name is not None:
+                # If a pre-configured signal name is provided, use it directly
+                wait_until_description['signal_name'] = self.args.signal_name
+            elif self.args.signal_type is not None:
+                # Otherwise if a signal type is provided, consolidate the
+                # signal config and submit the task accordingly
+                signal_type = self.args.signal_type
+                signal_config = {}
+                match signal_type:
+                    case "mission":
+                        if self.args.mission_name is None:
+                            raise ValueError(
+                                f'No mission name provided for [mission] signal '
+                                f'type!'
+                            )
+                        signal_config['mission_name'] = self.args.mission_name
+                        if self.args.resubmit_on_abort is not None:
+                            signal_config['resubmit_on_abort'] = \
+                                self.args.resubmit_on_abort
+                        if self.args.retry_count > -1:
+                            signal_config['retry_count'] = self.args.retry_count
+                    case "plc":
+                        if self.args.plc_register is None:
+                            raise ValueError(
+                                f'No PLC register provided for [plc] signal type!'
+                            )
+                        signal_config['register'] = self.args.plc_register
+                    case "custom":
                         raise ValueError(
-                            f'No mission name provided for [mission] signal '
-                            f'type!'
+                            f'[custom] signal type is not supported via task '
+                            f'description! Please provide the path to module in '
+                            f'the fleet action config.'
                         )
-                    signal_config['mission_name'] = self.args.mission_name
-                    if self.args.resubmit_on_abort is not None:
-                        signal_config['resubmit_on_abort'] = \
-                            self.args.resubmit_on_abort
-                    if self.args.retry_count > -1:
-                        signal_config['retry_count'] = self.args.retry_count
-                case "plc":
-                    if self.args.plc_register is None:
-                        raise ValueError(
-                            f'No PLC register provided for [plc] signal type!'
-                        )
-                    signal_config['register'] = self.args.plc_register
-                case "custom":
-                    raise ValueError(
-                        f'[custom] signal type is not supported via task '
-                        f'description! Please provide the path to module in '
-                        f'the fleet action config.'
-                    )
-                case _:
-                    # The signal type provided, if valid, points to a
-                    # configured signal type. We pass it to the action for
-                    # validation.
-                    pass
-            # Add wait activity
+                    case _:
+                        # The signal type provided, if valid, points to a
+                        # configured signal type. We pass it to the action for
+                        # validation.
+                        pass
+                wait_until_description['signal_type'] = self.args.signal_type
+                wait_until_description['signal_config'] = \
+                    self.args.signal_config
+            # Add in remaining action config if any
+            if self.args.default_timeout is not None:
+                wait_until_description['default_timeout'] = \
+                    self.args.default_timeout
+            if self.args.update_gap is not None:
+                wait_until_description['update_gap'] = self.args.update_gap
+
+            # Append to final description
             wait_activity = [{
                 "category": "perform_action",
                 "description": {
                     "unix_millis_action_duration_estimate": 60000,
                     "category": 'wait_until',
-                    "description": {
-                        "signal_config": signal_config
-                    }
+                    "description": wait_until_description
                 }
             }]
-            # We only add in these parameters if they are specified and valid
-            # The perform action plugin will use the default values if these
-            # are not provided
-            if signal_type is not None:
-                wait_activity[0]['description']['description']['signal_type'] = \
-                    signal_type
-            if self.args.timeout is not None:
-                wait_activity[0]['description']['description']['timeout'] = \
-                    self.args.timeout
-            if self.args.update_gap is not None:
-                wait_activity[0]['description']['description']['update_gap'] = \
-                    self.args.update_gap
             description["phases"].append({
                 "activity": {
                     "category": "sequence",

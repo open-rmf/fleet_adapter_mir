@@ -26,7 +26,7 @@ class ActionFactory(MirActionFactory):
         MirActionFactory.__init__(self, context)
         self.custom_modules = {}
         # Raise error if config file is invalid
-        supported_signal_types = {'mission', 'plc', 'custom'}
+        supported_signal_types = {'mission', 'plc', 'plugin'}
         signals = context.action_config.get('signals')
         if signals is None:
             # If the user did not provide any valid signal config, log a
@@ -65,14 +65,16 @@ class ActionFactory(MirActionFactory):
             match signal_type:
                 case 'mission':
                     self.verify_mission(
+                        signal_name,
                         signal_config.get('mission_name'),
                         signal_config.get('retry_count'),
                         signal_config.get('resubmit_on_abort')
                     )
                 case 'plc':
-                    self.verify_plc(signal_config.get('register'))
-                case 'custom':
-                    self.verify_custom_module(signal_config.get('module'))
+                    self.verify_plc(signal_name, signal_config.get('register'))
+                case 'plugin':
+                    self.verify_custom_module(
+                        signal_name, signal_config.get('module'))
 
         # Register default signal type
         default_signal = context.action_config.get('default_signal')
@@ -87,19 +89,14 @@ class ActionFactory(MirActionFactory):
             )
             return
 
-        if default_signal not in supported_signal_types:
-            raise ValueError(
-                f'User provided a default signal type {default_signal} '
-                f'in the action config for WaitUntil MirAction, but the '
-                f'default signal type is not supported!')
-        elif default_signal not in signals.keys():
+        if default_signal not in signals.keys():
             raise ValueError(
                 f'User provided a default signal type {default_signal} '
                 f'in the action config for WaitUntil MirAction, but the '
                 f'default signal type is not configured!')
 
     def supports_action(self, category: str) -> bool:
-        return True if category == 'wait_until' else False
+        return category == 'wait_until'
 
     def perform_action(
         self,
@@ -151,8 +148,8 @@ class ActionFactory(MirActionFactory):
             module: str | None):
         if module is None:
             raise KeyError(
-                f'WaitUntil MirAction requires a custom module for the '
-                f'[custom] signal type, but path to module is not provided in '
+                f'WaitUntil MirAction requires a custom plugin module for the '
+                f'[plugin] signal type, but path to module is not provided in '
                 f'the action config for {signal_name}! Unable to instantiate '
                 f'WaitUntil MirActionFactory.'
             )
@@ -196,7 +193,8 @@ class WaitUntil(MirAction):
             'update_gap',
             context.action_config.get('update_gap', 60))  # seconds
         self.wait_timeout = description.get(
-            'timeout', context.action_config.get('timeout', 60))  # seconds
+            'default_timeout',
+            context.action_config.get('default_timeout', 60))  # seconds
         self.signal_config = context.action_config.get('signals')
         self.default_signal = context.action_config.get('default_signal')
 
@@ -252,38 +250,40 @@ class WaitUntil(MirAction):
 
     def create_move_off_cb(self, description: dict, custom_modules: dict):
         signal_cb = None
+        signal_name = None
+        signal_config = None
         signal_type = None
 
         # Determine which move off signal config to use. Any config populated
         # in the task description overrides the default config provided in
         # action config.
-        if 'signal_type' in description:
+        if 'signal_name' in description:
+            signal_name = description['signal_name']
+            if signal_name in self.signal_config:
+                signal_config = self.signal_config[signal_name]
+                signal_type = signal_config['signal_type']
+        elif 'signal_type' in description and 'signal_config' in description:
+            signal_config = description['signal_config']
             signal_type = description['signal_type']
         elif self.default_signal is not None:
-            signal_type = self.default_signal
+            signal_config = self.signal_config[self.default_signal]
+            signal_type = signal_config['signal_type']
         else:
             # There is no move off signal provided, we will just wait for the
             # duration of the configured timeout
-            timeout = description.get('timeout', self.wait_timeout)
+            default_timeout = description.get(
+                'default_timeout', self.wait_timeout)
             self.context.node.get_logger().info(
                 f'No move off signal was configured for [{self.context.name}]'
                 f', the robot will begin waiting until the configured timeout '
-                f'of [{timeout}] seconds.'
+                f'of [{default_timeout}] seconds.'
             )
             signal_cb = lambda: False
             return signal_cb
 
-        signal_config = None
-        if signal_type in self.signal_config:
-            # Signal is preconfigured in the fleet action config
-            signal_config = self.signal_config[signal_type]
-            signal_type = signal_config['signal_type']
-        else:
-            signal_config = description.get('signal_config')
-        if signal_config is None:
+        if signal_config is None or signal_type is None:
             self.context.node.get_logger().error(
-                f'The submitted signal type/config is invalid for '
-                f'{signal_type}!'
+                f'The submitted signal type/config is invalid!'
             )
             return None
 
@@ -303,11 +303,19 @@ class WaitUntil(MirAction):
                     f'{register} returns True.'
                 )
                 signal_cb = lambda: self.check_plc_register(register)
-            case 'custom':
-                module = custom_modules.get(signal_type)
+            case 'plugin':
+                if signal_name is None:
+                    self.context.node.get_logger().error(
+                        f'MoveOff signal type [plugin] was selected for '
+                        f'robot [{self.context.name}], but no valid signal '
+                        f'name was provided! Please ensure that the required '
+                        f'fields are provided in the task description.'
+                    )
+                    return None
+                module = custom_modules.get(signal_name)
                 if module is None:
                     self.context.node.get_logger().info(
-                        f'MoveOff signal type [custom] was selected for '
+                        f'MoveOff signal type [plugin] was selected for '
                         f'robot [{self.context.name}], but no valid move off '
                         f'signal module was provided! Please ensure that the '
                         f'required fields are provided in the fleet config.'
@@ -316,7 +324,7 @@ class WaitUntil(MirAction):
                 module.begin_waiting(description)
                 self.context.node.get_logger().info(
                     f'Configuring robot [{self.context.name}] move off '
-                    f'behavior: robot will wait until the custom move off '
+                    f'behavior: robot will wait until the plugin move off '
                     f'behavior signals that the robot is ready to move off.'
                 )
                 signal_cb = lambda: module.is_move_off_ready()
