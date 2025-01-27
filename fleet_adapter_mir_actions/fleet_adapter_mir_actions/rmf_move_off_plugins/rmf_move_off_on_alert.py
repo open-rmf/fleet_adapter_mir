@@ -24,6 +24,7 @@ from rmf_task_msgs.msg import Alert
 from rmf_task_msgs.msg import AlertResponse
 from rmf_task_msgs.msg import AlertParameter
 
+from ..rmf_move_off import BaseMoveOff
 from fleet_adapter_mir.robot_adapter_mir import ActionContext
 
 
@@ -58,7 +59,10 @@ class MoveOff(BaseMoveOff):
             qos_profile=transient_qos
         )
 
-    def begin_waiting(self, description):
+    def verify_signal(self, signal_config: dict) -> bool:
+        return True
+
+    def begin_waiting(self, signal_config: dict) -> bool:
         # Publish an alert to signal that the robot has begun waiting
         msg = Alert()
         msg.id = datetime.datetime.now().strftime(
@@ -73,13 +77,11 @@ class MoveOff(BaseMoveOff):
             f'signal that it has started waiting.'
         )
         self.alert = msg
+        return True
 
-    def is_move_off_ready(self):
+    def is_move_off_ready(self) -> bool:
         with self.mutex:
             if self.ready:
-                # This `ready` variable is created everytime the robot begins a
-                # wait_until action, so there is no need to toggle it back to
-                # False
                 return True
         return False
 

@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
 import importlib
-import requests
-from urllib.error import HTTPError
 
 from fleet_adapter_mir_actions.mir_action import MirAction, MirActionFactory
 from fleet_adapter_mir.robot_adapter_mir import ActionContext
@@ -24,9 +21,33 @@ from fleet_adapter_mir.robot_adapter_mir import ActionContext
 class ActionFactory(MirActionFactory):
     def __init__(self, context: ActionContext):
         MirActionFactory.__init__(self, context)
-        self.custom_modules = {}
-        # Raise error if config file is invalid
-        supported_signal_types = {'mission', 'plc', 'plugin'}
+
+        # Import configured move off plugins
+        self.move_off_plugins = {}
+        plugins = context.action_config.get('move_off_plugins')
+        if plugins is None:
+            # If the user did not provide any move off plugins, log a warning
+            # to remind users to provide signal type config in any task
+            # description they submit
+            self.context.node.get_logger().warn(
+                f'WaitUntil ActionFactory is instantiated for robot '
+                f'[{self.context.name}], but no valid signal plugin has been '
+                f'provided in the action config! There will be no move '
+                f'off signal available and the robot will wait for the full '
+                f'duration of the timeout when this action is triggered.'
+            )
+            return
+        for plugin_name, module in plugins.items():
+            try:
+                move_off_plugin = importlib.import_module(module)
+                self.move_off_plugins[plugin_name] = move_off_plugin
+            except ImportError:
+                self.context.node.get_logger().warn(
+                    f'Unable to import module {module}! Unable to instantiate '
+                    f'WaitUntil MirActionFactory.'
+                )
+
+        # Validate signal config provided
         signals = context.action_config.get('signals')
         if signals is None:
             # If the user did not provide any valid signal config, log a
@@ -40,60 +61,43 @@ class ActionFactory(MirActionFactory):
                 f'to RMF.'
             )
             return
-
         for signal_name, signal_config in signals.items():
-            signal_type = signal_config.get('signal_type')
-            if signal_type is None:
+            plugin_name = signal_config.get('plugin')
+            if (plugin_name is None or
+                    plugin_name not in self.move_off_plugins):
                 raise KeyError(
-                    f'WaitUntil MirAction signal config requires a '
-                    f'defined signal_type, but signal_type is not '
-                    f'provided for {signal_name}! Unable to instantiate '
-                    f'WaitUntil MirActionFactory.'
+                    f'No registered plugin found for {signal_name}! '
+                    f'Please ensure that the signal config populated is valid. '
+                    f'Unable to instantiate WaitUntil MirActionFactory.'
                 )
-            elif signal_type not in supported_signal_types:
+            move_off_plugin = self.move_off_plugins[plugin_name]
+            move_off_obj = move_off_plugin.MoveOff(self.context)
+            if not move_off_obj.verify_signal(signal_name, signal_config):
                 raise ValueError(
-                    f'WaitUntil MirAction signal config requires a '
-                    f'defined signal_type, but signal_type provided '
-                    f'{signal_name} is not supported! We currently '
-                    f'support the following signal types: '
-                    f'{supported_signal_types}. Unable to instantiate '
-                    f'WaitUntil MirActionFactory.'
+                    f'Invalid signal config provided for {signal_name}! '
+                    f'Please ensure that the populated signal config is valid. '
+                    f'Unable to instantiate WaitUntil MirActionFactory.'
                 )
 
-            # Pass signal config into verify functions to validate types
-            # and catch missing values
-            match signal_type:
-                case 'mission':
-                    self.verify_mission(
-                        signal_name,
-                        signal_config.get('mission_name'),
-                        signal_config.get('retry_count'),
-                        signal_config.get('resubmit_on_abort')
-                    )
-                case 'plc':
-                    self.verify_plc(signal_name, signal_config.get('register'))
-                case 'plugin':
-                    self.verify_custom_module(
-                        signal_name, signal_config.get('module'))
-
-        # Register default signal type
+        # Validate default signal provided
         default_signal = context.action_config.get('default_signal')
         if default_signal is None:
             self.context.node.get_logger().warn(
                 f'WaitUntil ActionFactory instantiated for robot '
-                f'[{self.context.name}], but no default signal type has been '
-                f'provided in the action config! If no signal type is '
+                f'[{self.context.name}], but no default signal has been '
+                f'provided in the action config! If no signal name/config is '
                 f'populated in the task description, there will be no move '
                 f'off signal available and the robot will wait for the full '
                 f'duration of the timeout when this action is triggered.'
             )
             return
-
         if default_signal not in signals.keys():
             raise ValueError(
-                f'User provided a default signal type {default_signal} '
-                f'in the action config for WaitUntil MirAction, but the '
-                f'default signal type is not configured!')
+                f'User provided a default signal {default_signal} in the '
+                f'action config for WaitUntil MirAction, but the signal is '
+                f'not configured! Please ensure that the default signal '
+                f'points to one of the configured signals. '
+                f'Unable to instantiate WaitUntil MirActionFactory.')
 
     def supports_action(self, category: str) -> bool:
         return category == 'wait_until'
@@ -106,63 +110,11 @@ class ActionFactory(MirActionFactory):
     ) -> MirAction:
         if category == 'wait_until':
             return WaitUntil(
-                description, execution, self.context, self.custom_modules)
+                description, execution, self.context, self.move_off_plugins)
         raise ValueError(
             f'Action [{category}] has been called for rmf_wait_until, '
             f'but it is not a supported action!'
         )
-
-    def verify_mission(
-            self,
-            signal_name: str,
-            mission_name: str | None,
-            retry_count: int | None,
-            resubmit_on_abort: bool | None):
-        if mission_name is None:
-            raise KeyError(
-                f'WaitUntil MirAction requires a mission name for the '
-                f'[mission] signal type, but mission name is not provided in '
-                f'the action config for {signal_name}! Unable to instantiate '
-                f'WaitUntil MirActionFactory.'
-            )
-        if retry_count is not None and retry_count < 0:
-            self.context.node.warn(
-                f'WaitUntil MirAction takes in a retry count for the '
-                f'[mission] signal type, but the value provided '
-                f'[{retry_count}] is invalid! Ignoring provided value and '
-                f'using the default retry count of 10 for {signal_name}.'
-            )
-
-    def verify_plc(self, signal_name: str, plc_register: int | None):
-        if plc_register is None:
-            raise KeyError(
-                f'WaitUntil MirAction requires a default PLC register for '
-                f'signal type [plc], but no PLC register was provided in the '
-                f'action config for {signal_name}! Unable to instantiate '
-                f'WaitUntil MirActionFactory.'
-            )
-
-    def verify_custom_module(
-            self,
-            signal_name: str,
-            module: str | None):
-        if module is None:
-            raise KeyError(
-                f'WaitUntil MirAction requires a custom plugin module for the '
-                f'[plugin] signal type, but path to module is not provided in '
-                f'the action config for {signal_name}! Unable to instantiate '
-                f'WaitUntil MirActionFactory.'
-            )
-        try:
-            move_off_plugin = importlib.import_module(module)
-            self.custom_modules[signal_name] = \
-                move_off_plugin.MoveOff(self.context)
-        except ImportError:
-            self.context.node.get_logger().warn(
-                f'Unable to import module {module}! Unable to instantiate '
-                f'WaitUntil MirActionFactory.'
-            )
-
 
 class WaitUntil(MirAction):
     def __init__(
@@ -170,11 +122,21 @@ class WaitUntil(MirAction):
         description: dict,
         execution,
         context: ActionContext,
-        custom_modules: dict
+        move_off_plugins: dict
     ):
         MirAction.__init__(self, context, execution)
 
-        self.move_off_cb = self.create_move_off_cb(description, custom_modules)
+        self.update_gap = description.get(
+            'update_gap',
+            context.action_config.get('update_gap', 60))  # seconds
+        self.default_timeout = description.get(
+            'default_timeout',
+            context.action_config.get('default_timeout', 60))  # seconds
+        self.signals = context.action_config.get('signals')
+        self.default_signal = context.action_config.get('default_signal')
+
+        self.move_off_cb = \
+            self.create_move_off_cb(description, move_off_plugins)
         if self.move_off_cb is None:
             # Insufficient information provided to configure the check move off
             # callback, mark action as completed and continue task
@@ -189,18 +151,9 @@ class WaitUntil(MirAction):
             )
             return
 
-        self.update_gap = description.get(
-            'update_gap',
-            context.action_config.get('update_gap', 60))  # seconds
-        self.wait_timeout = description.get(
-            'default_timeout',
-            context.action_config.get('default_timeout', 60))  # seconds
-        self.configured_signals = context.action_config.get('signals')
-        self.default_signal = context.action_config.get('default_signal')
-
         self.start_time = self.context.node.get_clock().now().nanoseconds / 1e9
         self.context.node.get_logger().info(
-            f'New wait until action with a timeout of {self.wait_timeout} '
+            f'New wait until action with a timeout of {self.default_timeout} '
             f'seconds requested for robot [{self.context.name}]')
 
     def cancel_task(self, label: str = ''):
@@ -230,10 +183,10 @@ class WaitUntil(MirAction):
 
         # Check if the default timeout has passed
         now = self.context.node.get_clock().now().nanoseconds / 1e9
-        if now > self.start_time + self.wait_timeout:
+        if now > self.start_time + self.default_timeout:
             self.context.node.get_logger().info(
                 f'Robot [{self.context.name}] has completed waiting for '
-                f'{self.wait_timeout} seconds without move off signal, '
+                f'{self.default_timeout} seconds without move off signal, '
                 f'marking action as complete.'
             )
             return True
@@ -248,31 +201,27 @@ class WaitUntil(MirAction):
 
         return False
 
-    def create_move_off_cb(self, description: dict, custom_modules: dict):
-        signal_cb = None
-        signal_name = None
+    def create_move_off_cb(self, description: dict, move_off_plugins: dict):
         signal_config = None
-        signal_type = None
+        selected_plugin = None
 
         # Determine which move off signal config to use. Any config populated
         # in the task description overrides the default config provided in
         # action config.
         if 'signal_name' in description:
             signal_name = description['signal_name']
-            if signal_name in self.configured_signals:
-                signal_config = self.configured_signals[signal_name]
-                signal_type = signal_config['signal_type']
-        elif 'signal_type' in description and 'signal_config' in description:
+            if signal_name in self.signals:
+                signal_config = self.signals[signal_name]
+        elif ('signal_config' in description and
+                'plugin' in description['signal_config']):
             signal_config = description['signal_config']
-            signal_type = description['signal_type']
         elif self.default_signal is not None:
-            signal_config = self.configured_signals[self.default_signal]
-            signal_type = signal_config['signal_type']
+            signal_config = self.signals[self.default_signal]
         else:
             # There is no move off signal provided, we will just wait for the
             # duration of the configured timeout
             default_timeout = description.get(
-                'default_timeout', self.wait_timeout)
+                'default_timeout', self.default_timeout)
             self.context.node.get_logger().info(
                 f'No move off signal was configured for [{self.context.name}]'
                 f', the robot will begin waiting until the configured timeout '
@@ -281,213 +230,43 @@ class WaitUntil(MirAction):
             signal_cb = lambda: False
             return signal_cb
 
-        if signal_config is None or signal_type is None:
+        if signal_config is None:
             self.context.node.get_logger().error(
-                f'The submitted signal type/config is invalid!'
+                f'The submitted signal name or config is invalid! Unable to '
+                f'use a default signal as none was configured. Please ensure '
+                f'that a valid signal name or plugin is provided in the task '
+                f'description.'
             )
             return None
 
-        match signal_type:
-            case 'mission':
-                mission_name = signal_config['mission_name']
-                resubmit_on_abort = signal_config.get(
-                    'resubmit_on_abort', False)
-                retry_count = signal_config.get('retry_count', 10)
-                signal_cb = self.create_mission_move_off_cb(
-                    mission_name, retry_count, resubmit_on_abort)
-            case 'plc':
-                register = signal_config['register']
-                self.context.node.get_logger().info(
-                    f'Configuring robot [{self.context.name}] move off '
-                    f'signal: robot will wait until the PLC register '
-                    f'{register} returns True.'
-                )
-                signal_cb = lambda: self.check_plc_register(register)
-            case 'plugin':
-                if signal_name is None:
-                    self.context.node.get_logger().error(
-                        f'MoveOff signal type [plugin] was selected for '
-                        f'robot [{self.context.name}], but no valid signal '
-                        f'name was provided! Please ensure that the required '
-                        f'fields are provided in the task description.'
-                    )
-                    return None
-                module = custom_modules.get(signal_name)
-                if module is None:
-                    self.context.node.get_logger().info(
-                        f'MoveOff signal type [plugin] was selected for '
-                        f'robot [{self.context.name}], but no valid move off '
-                        f'signal module was provided! Please ensure that the '
-                        f'required fields are provided in the fleet config.'
-                    )
-                    return None
-                module.begin_waiting(description)
-                self.context.node.get_logger().info(
-                    f'Configuring robot [{self.context.name}] move off '
-                    f'behavior: robot will wait until the plugin move off '
-                    f'behavior signals that the robot is ready to move off.'
-                )
-                signal_cb = lambda: module.is_move_off_ready()
-            case _:
-                self.context.node.get_logger().info(
-                    f'Invalid move off signal type [{signal_type}] provided, '
-                    f'unable to initialize a WaitUntil action for '
-                    f'{self.context.name}.'
-                )
+        plugin_name = signal_config['plugin']
+        selected_plugin = move_off_plugins.get(plugin_name)
+        if selected_plugin is None:
+            self.context.node.get_logger().error(
+                f'The submitted signal plugin {plugin_name} has not been '
+                f'configured! Please ensure that a valid and registered plugin '
+                f'is provided in the task description.'
+            )
+            return None
+
+        move_off_obj = selected_plugin.MoveOff(self.context)
+        if not move_off_obj.verify_signal(signal_config):
+            self.context.node.get_logger().error(
+                f'The submitted signal config is invalid! Please resubmit the '
+                f'task with a valid signal config.'
+            )
+            return None
+        if not move_off_obj.begin_waiting(signal_config):
+            self.context.node.get_logger().error(
+                f'[{self.context.name}] failed to configure the signal with '
+                f'plugin {plugin_name}! Unable to begin waiting.'
+            )
+            return None
+
+        self.context.node.get_logger().info(
+            f'Configured robot [{self.context.name}] move off behavior: robot '
+            f'will wait until the [{plugin_name}] plugin signals that the '
+            f'robot is ready to move off.'
+        )
+        signal_cb = lambda: move_off_obj.is_move_off_ready()
         return signal_cb
-
-    def create_mission_move_off_cb(
-            self,
-            mission_name: str,
-            retry_count: int,
-            resubmit_on_abort: bool):
-        if mission_name not in self.context.api.known_missions:
-            self.context.node.get_logger().info(
-                f'Mission {mission_name} not found on robot '
-                f'{self.context.name}!'
-            )
-            return None
-        mission_actions = \
-            self.context.api.missions_mission_id_actions_get(
-                self.context.api.known_missions[mission_name]['guid']
-            )
-        if not mission_actions:
-            self.context.node.get_logger().info(
-                f'Mission {mission_name} actions not found on robot '
-                f'{self.context.name}!'
-            )
-            return None
-        # Queue the waiting mission for this robot
-        count = 0  # we should attempt (retry_count + 1) times in total
-        mission_queue_id = None
-        while count <= retry_count and not mission_queue_id:
-            count += 1
-            self.context.node.get_logger().info(
-                f'Queueing mission {mission_name} for robot '
-                f'[{self.context.name}]...'
-            )
-            try:
-                mission_queue_id = \
-                    self.context.api.queue_mission_by_name(
-                        mission_name)
-                if mission_queue_id is not None:
-                    break
-            except Exception as err:
-                self.context.node.get_logger().info(
-                    f'Failed to queue mission {mission_name}: {err}. '
-                    f'Retrying...'
-                )
-            time.sleep(1)
-        if not mission_queue_id:
-            self.context.node.get_logger().info(
-                f'Unable to queue mission {mission_name} for robot '
-                f'[{self.context.name}]!'
-            )
-            return None
-        self.context.node.get_logger().info(
-            f'Mission {mission_name} queued for [{self.context.name}] '
-            f'with mission queue id {mission_queue_id}.'
-        )
-        self.context.node.get_logger().info(
-            f'Configuring robot [{self.context.name}] move off signal'
-            f': robot will wait until mission {mission_name} with '
-            f'mission queue id {mission_queue_id} is completed.'
-        )
-        return lambda: self.check_mission_complete(
-            mission_name, mission_queue_id, resubmit_on_abort)
-
-    def check_mission_complete(
-        self,
-        mission_name,
-        mission_queue_id,
-        resubmit_on_abort
-    ):
-        mission_status = \
-            self.context.api.mission_queue_id_get(mission_queue_id)
-        if (mission_status is not None and
-                mission_status['state'] == 'Done'):
-            # Mission has completed, we can set move_off to True
-            self.context.node.get_logger().info(
-                f'Robot [{self.context.name}] has completed its mission '
-                f'with mission queue id {mission_queue_id}'
-            )
-            return True
-
-        if (mission_status is not None and
-                mission_status['state'] == 'Aborted'):
-            if not resubmit_on_abort:
-                # If mission is aborted without option to resubmit on abort,
-                # mark mission as finished
-                self.context.node.get_logger().info(
-                    f'Robot [{self.context.name}] has aborted its mission '
-                    f'with mission queue id {mission_queue_id}, marking '
-                    f'action as completed.'
-                )
-                return True
-
-            # Mission aborted for some reason, let's submit the mission
-            # again
-            new_mission_queue_id = self.context.api.queue_mission_by_name(
-                mission_name)
-            if not new_mission_queue_id:
-                # If we didn't successfully post a new mission, we'll
-                # try again in the next update_action loop
-                return
-            # Update the check move off callback with the updated mission
-            # queue id
-            self.move_off_cb = lambda: self.check_mission_complete(
-                mission_name,
-                new_mission_queue_id)
-            self.context.node.get_logger().info(
-                f'Robot [{self.context.name}] aborted mission with queue '
-                f'id {mission_queue_id}, re-submitting mission with new '
-                f'queue id {new_mission_queue_id}'
-            )
-        return False
-
-    def check_plc_register(self, register: int):
-        # Update register to check if PLC register returns a non-zero value
-        value = self.register_get(register)
-        if value:
-            self.context.node.get_logger().info(
-                f'[{self.context.name}] PLC register {register} detected '
-                f'value {value}, robot is ready to move off.'
-            )
-            return True
-        return False
-
-    # --------------------------------------------------------------------------
-    # HELPFUL FUNCTIONS FOR INTERACTING WITH MIR REST API
-    # --------------------------------------------------------------------------
-
-    def register_get(self, register: int) -> int:
-        if not self.context.api.connected:
-            return None
-        try:
-            response = requests.get(
-                self.context.api.prefix + f'registers/{register}',
-                headers=self.context.api.headers,
-                timeout=self.context.api.timeout)
-            if self.context.api.debug:
-                self.context.node.get_logger().debug(
-                    f'Response: {response.headers}'
-                )
-            value = response.json().get('value', 0)
-            # Convert value into int if required
-            if isinstance(value, str):
-                try:
-                    return int(value)
-                except ValueError as value_err:
-                    self.context.node.get_logger().debug(
-                        f'Value error: {value_err}'
-                    )
-                    return None
-            elif isinstance(value, int):
-                return value
-            return None
-        except HTTPError as http_err:
-            self.context.node.get_logger().debug(f'HTTP error: {http_err}')
-            return None
-        except Exception as err:
-            self.context.node.get_logger().debug(f'Other  error: {err}')
-            return None

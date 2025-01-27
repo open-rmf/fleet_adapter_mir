@@ -21,12 +21,23 @@ class BaseMoveOff(ABC):
         self.context = context
 
     '''
+    This method verifies that the configuration for this move off signal is
+    valid.
+    Returns True if valid, else False.
+    '''
+    @abstractmethod
+    def verify_signal(self, signal_config: dict) -> bool:
+        # To be implemented
+        ...
+
+    '''
     This method is called when the robot reaches the waiting waypoint and
     begins waiting. Use this callback to trigger any process during the
     waiting period.
+    Returns False if the signal setup fails, else True.
     '''
     @abstractmethod
-    def begin_waiting(self, description: dict):
+    def begin_waiting(self, signal_config: dict) -> bool:
         # To be implemented
         ...
 

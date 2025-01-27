@@ -50,18 +50,18 @@ class TaskRequester(Node):
                             help='Number of seconds to default timeout')
         parser.add_argument('-u', '--update_gap', type=int,
                             help='Number of seconds between logging updates')
-        parser.add_argument('-s', '--signal_name', type=str,
+        parser.add_argument('-n', '--signal_name', type=str,
                             help='Preconfigured move off signal name')
-        parser.add_argument('-s', '--signal_type', type=str,
-                            help='Move off signal type')
+        parser.add_argument('-p', '--plugin', type=str,
+                            help='Move off signal plugin')
         parser.add_argument('-m', '--mission_name', type=str,
                             help='Mission name')
-        parser.add_argument('-r', '--resubmit_on_abort', type=bool,
+        parser.add_argument('-a', '--resubmit_on_abort', type=bool,
                             help='Resubmit mission if aborted by robot')
         parser.add_argument('-rc', '--retry_count', required=False, default=-1,
                             type=int,
                             help='Number of retries to queue mission')
-        parser.add_argument('-p', '--plc_register', type=int,
+        parser.add_argument('-r', '--plc_register', type=int,
                             help='PLC register number')
         parser.add_argument('-st', '--start_time',
                             help='Start time from now in secs, default: 0',
@@ -134,17 +134,17 @@ class TaskRequester(Node):
             if self.args.signal_name is not None:
                 # If a pre-configured signal name is provided, use it directly
                 wait_until_description['signal_name'] = self.args.signal_name
-            elif self.args.signal_type is not None:
+            elif self.args.plugin is not None:
                 # Otherwise if a signal type is provided, consolidate the
                 # signal config and submit the task accordingly
-                signal_type = self.args.signal_type
+                signal_plugin = self.args.plugin
                 signal_config = {}
-                match signal_type:
-                    case "mission":
+
+                match signal_plugin:
+                    case "rmf_move_off_on_mission":
                         if self.args.mission_name is None:
                             raise ValueError(
-                                f'No mission name provided for [mission] signal '
-                                f'type!'
+                                f'No mission name provided for [{signal_plugin}]!'
                             )
                         signal_config['mission_name'] = self.args.mission_name
                         if self.args.resubmit_on_abort is not None:
@@ -152,26 +152,18 @@ class TaskRequester(Node):
                                 self.args.resubmit_on_abort
                         if self.args.retry_count > -1:
                             signal_config['retry_count'] = self.args.retry_count
-                    case "plc":
+                    case "rmf_move_off_on_plc":
                         if self.args.plc_register is None:
                             raise ValueError(
-                                f'No PLC register provided for [plc] signal type!'
+                                f'No PLC register provided for [rmf_move_off_on_plc]!'
                             )
                         signal_config['register'] = self.args.plc_register
-                    case "custom":
-                        raise ValueError(
-                            f'[custom] signal type is not supported via task '
-                            f'description! Please provide the path to module in '
-                            f'the fleet action config.'
-                        )
                     case _:
-                        # The signal type provided, if valid, points to a
-                        # configured signal type. We pass it to the action for
-                        # validation.
+                        # This task script only supports populating signal
+                        # config for mission and PLC move off signals.
                         pass
-                wait_until_description['signal_type'] = self.args.signal_type
-                wait_until_description['signal_config'] = \
-                    self.args.signal_config
+                signal_config['plugin'] = signal_plugin
+                wait_until_description['signal_config'] = signal_config
             # Add in remaining action config if any
             if self.args.default_timeout is not None:
                 wait_until_description['default_timeout'] = \
