@@ -132,7 +132,7 @@ plugins:
         mission_name: "some_other_mission_name"
       sample_plc_1:
         plugin: "rmf_move_off_on_plc"
-        register: 21 # Fill in with PLC register number. Robot moves off when this PLC register returns True
+        register: 20 # Fill in with PLC register number. Robot moves off when this PLC register returns True
       sample_plc_2:
         plugin: "rmf_move_off_on_plc"
         register: 21
