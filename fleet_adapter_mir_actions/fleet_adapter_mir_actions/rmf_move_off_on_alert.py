@@ -24,13 +24,13 @@ from rmf_task_msgs.msg import Alert
 from rmf_task_msgs.msg import AlertResponse
 from rmf_task_msgs.msg import AlertParameter
 
-from ..rmf_move_off import BaseMoveOff
+from .rmf_move_off import BaseMoveOff
 from fleet_adapter_mir.robot_adapter_mir import ActionContext
 
 
 class MoveOff(BaseMoveOff):
     def __init__(self, context: ActionContext):
-        MoveOff.__init__(self, context)
+        BaseMoveOff.__init__(self, context)
 
         '''
         This example demonstrates how we can notify the robot to move off when

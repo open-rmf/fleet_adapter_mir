@@ -72,7 +72,7 @@ class ActionFactory(MirActionFactory):
                 )
             move_off_plugin = self.move_off_plugins[plugin_name]
             move_off_obj = move_off_plugin.MoveOff(self.context)
-            if not move_off_obj.verify_signal(signal_name, signal_config):
+            if not move_off_obj.verify_signal(signal_config):
                 raise ValueError(
                     f'Invalid signal config provided for {signal_name}! '
                     f'Please ensure that the populated signal config is valid. '

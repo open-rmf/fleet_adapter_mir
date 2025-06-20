@@ -15,13 +15,13 @@
 import requests
 from urllib.error import HTTPError
 
-from ..rmf_move_off import BaseMoveOff
+from .rmf_move_off import BaseMoveOff
 from fleet_adapter_mir.robot_adapter_mir import ActionContext
 
 
 class MoveOff(BaseMoveOff):
     def __init__(self, context: ActionContext):
-        MoveOff.__init__(self, context)
+        BaseMoveOff.__init__(self, context)
 
         '''
         This example demonstrates how we can notify the robot to move off when
@@ -68,7 +68,7 @@ class MoveOff(BaseMoveOff):
                 )
             value = response.json().get('value', 0)
             # Convert value into int if required
-            if isinstance(value, str):
+            if not isinstance(value, int):
                 try:
                     return int(value)
                 except ValueError as value_err:
@@ -76,9 +76,8 @@ class MoveOff(BaseMoveOff):
                         f'Value error: {value_err}'
                     )
                     return None
-            elif isinstance(value, int):
+            else:
                 return value
-            return None
         except HTTPError as http_err:
             self.context.node.get_logger().debug(f'HTTP error: {http_err}')
             return None
