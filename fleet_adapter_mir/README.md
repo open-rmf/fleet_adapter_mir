@@ -28,7 +28,7 @@ ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yam
 If you have not configured the necessary RMF missions on the MiR, you may parse in the filepath to `rmf_missions.json` when launching the fleet adapter node. On startup, the fleet adapter will create these missions via MiR REST API. If a mission with the same Mission Group and Name already exists on the robot, the fleet adapter will skip creating it.
 
 ```bash
-ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yaml -a ../missions/rmf_missions.json
+ros2 run fleet_adapter_mir fleet_adapter_mir -c mir_config.yaml -n nav_graph.yaml -r ../missions/rmf_missions.json
 ```
 
 
