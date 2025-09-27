@@ -40,6 +40,7 @@ class MiRStateCode(enum.IntEnum):
 class MiRPositionTypes(enum.IntEnum):
     ROBOT = 0
     SHELF = 5
+    VL_MARKER = 11
     CHARGING_STATION = 20
     CHARGING_STATION_ENTRY = 21
     CART = 22
@@ -193,6 +194,7 @@ class MirAPI:
                 self.positions_guid_delete(pos['guid'])
             elif pos['type_id'] == MiRPositionTypes.ROBOT or \
                     pos['type_id'] == MiRPositionTypes.SHELF or \
+                    pos['type_id'] == MiRPositionTypes.VL_MARKER or \
                     pos['type_id'] == MiRPositionTypes.CHARGING_STATION or \
                     pos['type_id'] == MiRPositionTypes.LIFT or \
                     pos['type_id'] == MiRPositionTypes.LIFT_ENTRY:
@@ -312,7 +314,13 @@ class MirAPI:
             return None
         return self.dock(self.go_to, None, position_name)
 
-    def dock(self, mission_name, start_waypoint, end_waypoint):
+    def dock(
+        self,
+        mission_name,
+        start_waypoint,
+        end_waypoint,
+        offsets=None
+    ):
         mission_params = None
 
         # Get parameters for start and end waypoints
@@ -352,6 +360,28 @@ class MirAPI:
             mission_params = end_param + dock_param + marker_param
         else:
             mission_params = end_param
+
+        # Remove redundant params
+        # TODO(@xiyuoh) Double check this against other docking missions
+        remove_items = []
+        for i in mission_params:
+            if i.get('input_name') is None:
+                remove_items.append(i)
+        for rm in remove_items:
+            mission_params.remove(rm)
+
+        # Before queueing the mission, update docking offsets if any
+        if offsets:
+            for data in offsets:
+                docking_offset_guid = data['docking_offset_guid']
+                self.docking_offsets_values_put(
+                    docking_offset_guid,
+                    'string',
+                    data['offset'][0],
+                    data['offset'][1],
+                    data['offset'][2]
+                )
+
         return self.queue_mission_by_name(mission_name, mission_params)
 
     def localize(self, map, estimate, index, position_name=None):
@@ -798,6 +828,22 @@ class MirAPI:
         except Exception as err:
             print(f"Other error: {err}")
 
+    def position_types_get(self):
+        if not self.connected:
+            return
+        try:
+            response = requests.get(
+                self.prefix + 'position_types/',
+                headers=self.headers,
+                timeout=self.timeout)
+            if self.debug:
+                print(f"Response: {response.json()}")
+            return response.json()
+        except HTTPError as http_err:
+            print(f"HTTP error: {http_err}")
+        except Exception as err:
+            print(f"Other error: {err}")
+
     def status_put(self, state_id):
         if not self.connected:
             return
@@ -929,6 +975,60 @@ class MirAPI:
             if offs['name'] == offset_name:
                 return offs['guid']
         return None
+
+    def docking_offsets_values_get(self, guid: str):
+        if not self.connected:
+            return
+        try:
+            response = requests.get(
+                self.prefix + f'docking_offsets/{guid}',
+                headers=self.headers,
+                timeout=self.timeout)
+            if self.debug:
+                print(f"Response: {response.json()}")
+            return response.json()
+        except HTTPError as http_err:
+            print(f"HTTP error: {http_err}")
+        except Exception as err:
+            print(f"Other error: {err}")
+
+    def docking_offsets_values_put(self, guid, name, x, y, orientation):
+        data = {
+            'name': name,
+            'x_offset': x,
+            'y_offset': y,
+            'orientation_offset': orientation,
+        }
+        try:
+            response = requests.put(
+                self.prefix + f'docking_offsets/{guid}',
+                headers=self.headers,
+                data=json.dumps(data),
+                timeout=self.timeout
+            )
+            if self.debug:
+                print(f"Response: {response.json()}")
+            return response.json()
+        except HTTPError as http_err:
+            print(f"HTTP error: {http_err}")
+        except Exception as err:
+            print(f"Other error: {err}")
+
+    def positions_docking_offsets_get(self, guid: str):
+        if not self.connected:
+            return
+        try:
+            response = requests.get(
+                self.prefix + f'positions/{guid}/docking_offsets',
+                headers=self.headers,
+                timeout=self.timeout)
+            if self.debug:
+                print(f"Response: {response.json()}")
+            return response.json()
+        except HTTPError as http_err:
+            print(f"HTTP error: {http_err}")
+        except Exception as err:
+            print(f"Other error: {err}")
 
     def footprints_get(self):
         if not self.connected:
