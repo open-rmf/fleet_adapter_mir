@@ -363,12 +363,9 @@ class MirAPI:
 
         # Remove redundant params
         # TODO(@xiyuoh) Double check this against other docking missions
-        remove_items = []
-        for i in mission_params:
-            if i.get('input_name') is None:
-                remove_items.append(i)
-        for rm in remove_items:
-            mission_params.remove(rm)
+        mission_params = [
+            param for param in mission_params if param.get('input_name') is not None
+        ]
 
         # Before queueing the mission, update docking offsets if any
         if offsets:
