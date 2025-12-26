@@ -49,6 +49,23 @@ conversions:
   marker_types:
     "charger": "Narrow asymmetric MiR500/1000 shelf"
 
+  # If the fleet adapter finds a MiR position (e.g. VL marker) with a matching
+  # name from this config, it will update the docking offset for this MiR
+  # position if it has a docking offset GUID.
+  # This mechanism enables a single MiR marker to support multiple custom
+  # offset values. Depending on which RMF waypoint the robot was sent to, its
+  # corresponding offset values will be inserted on the map accordingly.
+  # Note that we will always update the docking offset even if they are already
+  # set to the same values.
+  docking_offsets:
+    marker_1:  # name of the docking marker on MiR
+      # RMF waypoint to offset [x, y, orientation] values
+      rmf_waypoint_1a: [-0.5, 0.5, 0.0]
+    # EXAMPLE: setting multiple offsets for each MiR position/marker supported
+    marker_2:
+      rmf_waypoint_2a: [-0.5, 0.5, 0.0]
+      rmf_waypoint_2b: [-0.5, -0.5, 0.0]
+
 # RMF Fleet parameters
 rmf_fleet:
   name: "mir"

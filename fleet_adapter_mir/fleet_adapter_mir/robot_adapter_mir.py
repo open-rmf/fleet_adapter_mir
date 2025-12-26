@@ -162,12 +162,42 @@ class RobotAdapterMiR:
             self.node.get_logger().error(error_message)
             raise RuntimeError(error_message)
 
+        # Store custom docking offset config
+        self.docking_offsets = {}
+        docking_offset_config = conversions.get('docking_offsets')
+        if docking_offset_config is not None:
+            for pos_name, offsets in docking_offset_config.items():
+                pos_data = self.api.known_positions.get(pos_name)
+                if pos_data is None:
+                    continue
+                pos_guid = pos_data.get('guid')
+                if pos_guid is None:
+                    continue
+                # Get docking offset guid for this position
+                docking_offset_data = \
+                    self.api.positions_docking_offsets_get(pos_guid)
+                if docking_offset_data is None:
+                    continue
+                # Assume only one docking offset guid for each position
+                # TODO(@xiyuoh) Check this assumption
+                docking_offset_guid = docking_offset_data[0]['guid']
+                for wp, offset in offsets.items():
+                    data = {}
+                    data['position_name'] = pos_name
+                    data['position_guid'] = pos_guid
+                    data['docking_offset_guid'] = docking_offset_guid
+                    data['offset'] = offset
+                    self.docking_offsets[wp] = data
+
         # Track the current ongoing action
         self.current_action = None
 
         # Import and store plugin actions and action factories
         self.action_to_plugin_name = {}  # Maps action name to plugin name
         self.action_factories = {}  # Maps plugin name to action factory
+
+        if plugin_config is None:
+            return
         for plugin_name, action_config in plugin_config.items():
             try:
                 module = action_config['module']
@@ -685,8 +715,20 @@ class RobotAdapterMiR:
                     start_waypoint = None
                 mission_name = docking_points['mission_name']
 
+                # Apply custom docking offset if any
+                offsets = []
+                if start_waypoint is not None and \
+                        start_waypoint in self.docking_offsets:
+                    start_wp_offset = self.docking_offsets[start_waypoint]
+                    offsets.append(start_wp_offset)
+                if end_waypoint in self.docking_offsets:
+                    end_wp_offset = self.docking_offsets[end_waypoint]
+                    offsets.append(end_wp_offset)
+                if len(offsets) == 0:
+                    offsets = None
+
                 mission_queue_id = self.api.dock(
-                    mission_name, start_waypoint, end_waypoint)
+                    mission_name, start_waypoint, end_waypoint, offsets)
                 if mission_queue_id is None:
                     self.node.get_logger().info(
                         f'[{self.name}] Dock mission cannot be queued '
